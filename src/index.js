@@ -8,6 +8,7 @@ import { checkRateLimit } from "./services/rateLimiter.js";
 import { handleAISupport } from "./services/aiService.js";
 import { updateStaffActivity, isThreadPaused, pauseThread, resumeThread } from "./services/staffActivity.js";
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
+import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked } from "./services/threadInactivity.js";
 import * as logger from "./utils/logger.js";
 
 loadConfig();
@@ -20,6 +21,9 @@ const client = new Client({
   ],
 });
 
+const INACTIVITY_PROMPT_MESSAGE =
+  "Could you please specify why you opened this ticket? This will help us assist you.";
+
 client.on("ready", async () => {
   logger.info("Bot prêt, guilds:", client.guilds.cache.size);
   const payment = await client.channels.fetch(PAYMENT_CHANNEL_ID).catch(() => null);
@@ -30,6 +34,31 @@ client.on("ready", async () => {
     "| Channel tickets:",
     tickets ? TICKET_CHANNEL_ID : "introuvable"
   );
+
+  // Check every 15s for threads where creator hasn't replied after 1 min
+  setInterval(async () => {
+    const toPrompt = getThreadsToPrompt();
+    for (const { threadId } of toPrompt) {
+      try {
+        const thread = await client.channels.fetch(threadId).catch(() => null);
+        if (thread && thread.isThread()) {
+          await thread.send(INACTIVITY_PROMPT_MESSAGE);
+          markAsAsked(threadId);
+          logger.info("Inactivity prompt sent — thread:", threadId);
+        }
+      } catch (err) {
+        logger.error("Failed to send inactivity prompt:", err?.message, "thread:", threadId);
+      }
+    }
+  }, 15_000);
+});
+
+client.on("threadCreate", async (thread) => {
+  if (thread.parentId !== TICKET_CHANNEL_ID) return;
+  if (thread.archived) return;
+  const ownerId = thread.ownerId ?? null;
+  trackThread(thread.id, ownerId);
+  logger.info("New ticket thread tracked:", thread.id, "owner:", ownerId || "unknown");
 });
 
 client.on("messageCreate", async (message) => {
@@ -40,6 +69,9 @@ client.on("messageCreate", async (message) => {
   const content = message.content;
   const threadId = message.channel.id;
   const isStaff = STAFF_ROLE_ID && message.member?.roles?.cache?.has(STAFF_ROLE_ID);
+
+  // Notify inactivity tracker: creator or staff replied → stop tracking
+  onMessageInThread(threadId, message.author.id, isStaff);
 
   // Handle staff commands: !pause and !resume
   if (isStaff && content) {

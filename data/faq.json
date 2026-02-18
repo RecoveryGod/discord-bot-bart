@@ -40,6 +40,21 @@
       "keywords": [ "PayPal", "venmo", "eneba", "g2a"]
     },
     {
+      "question": "How to buy menu ?",
+      "answer": "To purchase the menu, please confirm which product you want and your preferred payment method. Once confirmed, we will provide you with the correct purchase instructions. You can also buy directly on our website using card or crypto: https://recoverygods.xyz",
+      "keywords": ["how to buy ", "where to buy", "buy menu", "purchase "]
+    },
+    {
+      "question": "What payment method do have?",
+      "answer": "Please let us know which payment method you prefer. We currently support credit/debit cards and cryptocurrency directly on our website: https://recoverygods.xyz. Alternatively, you can purchase a French Amazon gift card (from Eneba, G2A, GameSeal, Recharge.fr or Dundle) and send it in this ticket for manual verification.",
+      "keywords": ["payment method", "how to pay", "pay with", "available payment"]
+    },
+    {
+      "question": "Can I buy with a Google Play gift card?",
+      "answer": "We do not accept Google Play gift cards directly. You can purchase securely on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz. Alternatively, you may purchase a French Amazon gift card (from Eneba, G2A, GameSeal, Recharge.fr or Dundle) and send the code in this ticket for manual verification.",
+      "keywords": ["google play gift card", "google gift card", "google play payment"]
+    },
+    {
       "question": "Why has my Amazon gift card not been validated?",
       "answer": "Amazon gift cards require manual verification. Please allow some time for our team to review your submission. Do not resend the full code publicly.",
       "keywords": ["gift card delay", "not validated", "manual verification"]
