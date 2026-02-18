@@ -18,6 +18,8 @@ export const BOT_TOKEN = process.env.BOT_TOKEN?.trim() ?? "";
 export const PAYMENT_CHANNEL_ID = process.env.PAYMENT_CHANNEL_ID?.trim() ?? "";
 export const AMAZON_ROLE_ID = process.env.AMAZON_ROLE_ID?.trim() ?? "";
 export const TICKET_CHANNEL_ID = process.env.TICKET_CHANNEL_ID?.trim() ?? "";
+export const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() ?? "";
+export const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID?.trim() ?? "";
 
 export function loadConfig() {
   validate();

@@ -49,14 +49,14 @@ cp .env.example .env
 nano .env   # ou vim — remplir BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID
 
 # Lancer le bot
-docker compose up -d --build
+docker-compose up -d --build
 ```
 
 Vérifier que le bot tourne :
 
 ```bash
-docker compose ps
-docker compose logs -f bot
+docker-compose ps
+docker-compose logs -f bot
 ```
 
 ---

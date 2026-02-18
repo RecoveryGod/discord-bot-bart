@@ -1,6 +1,6 @@
 import { AMAZON_CODE_REGEX } from "../constants.js";
 
-const REDACTION_PLACEHOLDER = "Code Amazon";
+const REDACTION_PLACEHOLDER = "[REDACTED]";
 
 /**
  * Replaces Amazon gift card code patterns with a placeholder.

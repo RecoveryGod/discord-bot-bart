@@ -1,0 +1,104 @@
+[
+  {
+    "question": "How do I activate my license key?",
+    "answer": "To activate your license key, open the software loader, go to the activation section, paste your key exactly as received (without extra spaces), and click activate. Make sure you are connected to the internet during activation.",
+    "keywords": ["activate", "activation", "license key", "how to activate", "redeem key"]
+  },
+  {
+    "question": "My license key says invalid, what should I do?",
+    "answer": "Please make sure you copied the key exactly as provided. Avoid extra spaces before or after the key. If the issue persists, restart the loader and try again. If it still does not work, a support agent will assist you shortly.",
+    "keywords": ["invalid key", "key not working", "wrong key", "activation failed"]
+  },
+  {
+    "question": "My key says it is already used.",
+    "answer": "If your key shows as already used, ensure you are logged into the correct account. Keys are linked to the first account that activates them. If you believe this is an error, please wait for a human support agent to review your case.",
+    "keywords": ["already used", "key used", "license linked", "account issue"]
+  },
+  {
+    "question": "I purchased but did not receive my key.",
+    "answer": "After payment confirmation, your key is delivered automatically. Please check your email and spam folder. If you still have not received it, a support agent will verify your payment shortly.",
+    "keywords": ["did not receive", "no key", "purchase issue", "missing license"]
+  },
+  {
+    "question": "How long does payment verification take?",
+    "answer": "Payment verification usually takes a short time. In some cases, manual verification may be required. Please be patient while our team reviews your transaction.",
+    "keywords": ["payment delay", "verification time", "how long", "pending payment"]
+  },
+  {
+    "question": "My payment is pending.",
+    "answer": "If your payment is pending, please wait for confirmation from the payment provider. Once confirmed, your license will be delivered automatically. If the delay seems unusual, a human agent will review your transaction.",
+    "keywords": ["pending", "transaction pending", "waiting payment", "not confirmed"]
+  },
+  {
+    "question": "I have an Amazon gift card code, what should I do?",
+    "answer": "Please send your Amazon gift card code in this thread. Our staff will manually review and verify it shortly. Do not forget to tag @lifeisamazing_.",
+    "keywords": ["i have", "i have the code", "i have the gift card", "here is my code", "i already have", "i got the code", "i received the code", "send code", "submit code"]
+  },
+  {
+    "question": "Do you accept Amazon gift card payments?",
+    "answer": "Yes, French Amazon gift card payments are accepted. Please follow these instructions and wait for manual verification by staff.\n\nYou can buy one of the following gift cards from these sites, make sure its a **French** Amazon gift card:\n\n- [Eneba](https://www.eneba.com/fr/amazon-amazon-gift-card-10-eur-key-france)\n- [GameSeal](https://gameseal.com/amazon-gift-card-50-eur-key-france)\n- [G2A](https://www.g2a.com/fr/search?query=France%20amazon)\n- [Recharge.fr](https://www.recharge.fr/carte-cadeau-amazon)\n- [Dundle](https://dundle.com/fr/amazon/)\n\nOnce you have the gift card, you can send it here, and I'll assist you further. Don't forget to tag @lifeisamazing_.",
+    "keywords": ["amazon","gift card", "amazon payment", "gift card payment","payment", "pay", "amazon gift card", "eneba", "g2a"]
+    
+  },
+  {
+    "question": "Do you accept Paypal payments?",
+    "answer": "We don't accept PayPal payments directly. However, you can purchase a French Amazon gift card using PayPal or other payment methods. Please follow these instructions and wait for manual verification by staff.\n\nYou can buy one of the following gift cards from these sites, make sure its a **French** Amazon gift card:\n\n- [Eneba](https://www.eneba.com/fr/amazon-amazon-gift-card-10-eur-key-france)\n- [GameSeal](https://gameseal.com/amazon-gift-card-50-eur-key-france)\n- [G2A](https://www.g2a.com/fr/search?query=France%20amazon)\n- [Recharge.fr](https://www.recharge.fr/carte-cadeau-amazon)\n- [Dundle](https://dundle.com/fr/amazon/)\n\nOnce you have the gift card, you can send it here, and I'll assist you further. Don't forget to tag @lifeisamazing_.",
+    "keywords": [ "PayPal", "venmo", "eneba", "g2a"]
+    
+  },
+  {
+    "question": "Why has my Amazon gift card not been validated yet?",
+    "answer": "Amazon gift card payments require manual verification. Please allow some time for staff to review your submission. Do not resend the full code publicly.",
+    "keywords": ["amazon delay", "gift card not validated", "payment verification", "manual check"]
+  },
+  {
+    "question": "The software is crashing when I launch it.",
+    "answer": "For technical issues such as crashes, please contact the official software support team directly through their Discord or Telegram. They are best equipped to resolve technical problems quickly.",
+    "keywords": ["crash", "not launching", "software crash", "loader crash"]
+  },
+  {
+    "question": "I am getting an error code when opening the software.",
+    "answer": "Error codes are handled by the official software support team. Please join their Discord or Telegram and provide the exact error message for faster assistance.",
+    "keywords": ["error code", "error message", "launch error", "problem opening"]
+  },
+  {
+    "question": "My antivirus is blocking the software.",
+    "answer": "Some antivirus programs may flag modding software incorrectly. Please contact the official software support Discord or Telegram for proper guidance on safe configuration.",
+    "keywords": ["antivirus", "blocked", "defender", "security warning"]
+  },
+  {
+    "question": "Is this software allowed?",
+    "answer": "The software provided is authorized by the respective game publishers. If you need more detailed compliance information, please contact official support.",
+    "keywords": ["legal", "allowed", "authorized", "safe to use"]
+  },
+  {
+    "question": "Can I get a refund?",
+    "answer": "Refund eligibility depends on the specific circumstances of your purchase. Please contact a human support agent for a refund review.",
+    "keywords": ["refund", "money back", "cancel purchase", "return"]
+  },
+  {
+    "question": "How long is my license valid?",
+    "answer": "License duration depends on the product purchased (for example: monthly or lifetime). Please check your purchase details. If you are unsure, a support agent can verify it for you.",
+    "keywords": ["license duration", "how long", "validity", "expire"]
+  },
+  {
+    "question": "Can I transfer my license to another account?",
+    "answer": "Licenses are typically linked to the first account that activates them and cannot be transferred. If you believe there is an exception, please contact human support.",
+    "keywords": ["transfer license", "change account", "move key", "account switch"]
+  },
+  {
+    "question": "Where can I get technical support?",
+    "answer": "For technical assistance, please contact the official software Discord or Telegram directly. They provide specialized support for setup, errors, and compatibility issues.",
+    "keywords": ["technical support", "help setup", "support discord", "telegram support"]
+  },
+  {
+    "question": "I have a different issue not listed here.",
+    "answer": "If your issue is not related to activation, payment, or general access, a human support agent will assist you shortly.",
+    "keywords": ["other issue", "different problem", "not listed", "need help"]
+  },
+  {
+    "question": "Can I combine multiple Amazon gift cards for one purchase?",
+    "answer": "Yes, multiple Amazon gift cards can be combined to match the required amount. Please send all codes in this thread and wait for manual verification by staff.",
+    "keywords": ["combine", "multiple cards", "two gift cards", "several codes", "split payment"]
+  }
+]
