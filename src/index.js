@@ -6,6 +6,7 @@ import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
 import { checkRateLimit } from "./services/rateLimiter.js";
 import { handleAISupport } from "./services/aiService.js";
+import { updateStaffActivity, isThreadPaused, pauseThread, resumeThread } from "./services/staffActivity.js";
 import * as logger from "./utils/logger.js";
 
 loadConfig();
@@ -36,6 +37,50 @@ client.on("messageCreate", async (message) => {
   if (message.channel.parentId !== TICKET_CHANNEL_ID) return;
 
   const content = message.content;
+  const threadId = message.channel.id;
+  const isStaff = STAFF_ROLE_ID && message.member?.roles?.cache?.has(STAFF_ROLE_ID);
+
+  // Handle staff commands: !pause and !resume
+  if (isStaff && content) {
+    const lowerContent = content.toLowerCase().trim();
+    if (lowerContent === "!pause" || lowerContent === "!bot pause") {
+      pauseThread(threadId);
+      await message.reply("✅ Bot replies paused for this thread. Will auto-resume after 5 minutes of inactivity.");
+      // Delete the command message
+      try {
+        await message.delete();
+      } catch (err) {
+        logger.error("Failed to delete command message:", err?.message);
+      }
+      logger.info("Thread paused manually by staff:", threadId, "staff:", message.author.tag);
+      return;
+    }
+    if (lowerContent === "!resume" || lowerContent === "!bot resume") {
+      resumeThread(threadId);
+      await message.reply("✅ Bot replies resumed for this thread.");
+      // Delete the command message
+      try {
+        await message.delete();
+      } catch (err) {
+        logger.error("Failed to delete command message:", err?.message);
+      }
+      logger.info("Thread resumed manually by staff:", threadId, "staff:", message.author.tag);
+      return;
+    }
+  }
+
+  // Detect staff activity: if staff replies, pause bot automatically
+  if (isStaff) {
+    updateStaffActivity(threadId);
+    logger.info("Staff activity detected — thread paused:", threadId, "staff:", message.author.tag);
+    return; // Staff replied → bot doesn't process this message
+  }
+
+  // Check if thread is paused (bot won't reply)
+  if (isThreadPaused(threadId)) {
+    return; // Thread paused → bot skips
+  }
+
   if (!content) return;
 
   // Priority 1: Amazon Gift Card detection (existing behavior)
@@ -75,11 +120,6 @@ client.on("messageCreate", async (message) => {
   // Priority 2: AI Support (new behavior)
   // Skip if OpenAI API key is not configured
   if (!OPENAI_API_KEY) {
-    return;
-  }
-  
-  // Ignore staff/support role to avoid auto-reply loops
-  if (STAFF_ROLE_ID && message.member?.roles?.cache?.has(STAFF_ROLE_ID)) {
     return;
   }
 
