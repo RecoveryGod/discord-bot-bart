@@ -7,6 +7,7 @@ import { redactGiftCardCodes } from "./utils/redact.js";
 import { checkRateLimit } from "./services/rateLimiter.js";
 import { handleAISupport } from "./services/aiService.js";
 import { updateStaffActivity, isThreadPaused, pauseThread, resumeThread } from "./services/staffActivity.js";
+import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
 import * as logger from "./utils/logger.js";
 
 loadConfig();
@@ -144,8 +145,19 @@ client.on("messageCreate", async (message) => {
     const { answer, confidence } = aiResult;
 
     if (confidence >= 0.6) {
+      // Check for duplicate before replying
+      if (await shouldSkipDuplicateReply(message.channel, answer)) {
+        logger.info(
+          "Skipping duplicate reply — thread:",
+          message.channel.id,
+          "confidence:",
+          confidence.toFixed(2)
+        );
+        return;
+      }
       // Auto-reply
       await message.reply(answer);
+      recordBotMessage(message.channel.id, answer);
       logger.info(
         "AI reply sent — thread:",
         message.channel.id,
@@ -154,9 +166,17 @@ client.on("messageCreate", async (message) => {
       );
     } else {
       // Escalate to human
-      await message.reply(
-        `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`
-      );
+      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`;
+      // Check for duplicate before replying
+      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
+        logger.info(
+          "Skipping duplicate escalation — thread:",
+          message.channel.id
+        );
+        return;
+      }
+      await message.reply(escalationMessage);
+      recordBotMessage(message.channel.id, escalationMessage);
       logger.info(
         "Escalated to human — thread:",
         message.channel.id,
@@ -168,9 +188,17 @@ client.on("messageCreate", async (message) => {
     logger.error("Erreur lors du support IA:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
     // Fallback: escalate to human on error
     try {
-      await message.reply(
-        `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`
-      );
+      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`;
+      // Check for duplicate before replying
+      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
+        logger.info(
+          "Skipping duplicate fallback escalation — thread:",
+          message.channel.id
+        );
+        return;
+      }
+      await message.reply(escalationMessage);
+      recordBotMessage(message.channel.id, escalationMessage);
     } catch (replyErr) {
       logger.error("Failed to send escalation message:", replyErr?.message);
     }
