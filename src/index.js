@@ -6,7 +6,7 @@ import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
 import { checkRateLimit } from "./services/rateLimiter.js";
 import { handleAISupport } from "./services/aiService.js";
-import { updateStaffActivity, isThreadPaused, pauseThread, resumeThread } from "./services/staffActivity.js";
+import { updateStaffActivity, isThreadPaused, pauseThread, pauseThreadIndefinitely, resumeThread } from "./services/staffActivity.js";
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
 import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked } from "./services/threadInactivity.js";
 import * as logger from "./utils/logger.js";
@@ -73,13 +73,13 @@ client.on("messageCreate", async (message) => {
   // Notify inactivity tracker: creator or staff replied → stop tracking
   onMessageInThread(threadId, message.author.id, isStaff);
 
-  // Handle staff commands: !pause and !resume
+  // Handle staff commands: !pause, !mute, !resume (accept both "!bot mute" and "!bot-mute")
   if (isStaff && content) {
     const lowerContent = content.toLowerCase().trim();
-    if (lowerContent === "!pause" || lowerContent === "!bot pause") {
+    const cmd = lowerContent.replace(/-/g, " ").replace(/\s+/g, " ");
+    if (cmd === "!pause" || cmd === "!bot pause") {
       pauseThread(threadId);
       await message.reply("✅ Bot replies paused for this thread. Will auto-resume after 5 minutes of inactivity.");
-      // Delete the command message
       try {
         await message.delete();
       } catch (err) {
@@ -88,10 +88,20 @@ client.on("messageCreate", async (message) => {
       logger.info("Thread paused manually by staff:", threadId, "staff:", message.author.tag);
       return;
     }
-    if (lowerContent === "!resume" || lowerContent === "!bot resume") {
+    if (cmd === "!mute" || cmd === "!bot mute") {
+      pauseThreadIndefinitely(threadId);
+      await message.reply("✅ Bot is now muted for this thread. No replies until you use **!resume**.");
+      try {
+        await message.delete();
+      } catch (err) {
+        logger.error("Failed to delete command message:", err?.message);
+      }
+      logger.info("Thread muted indefinitely by staff:", threadId, "staff:", message.author.tag);
+      return;
+    }
+    if (cmd === "!resume" || cmd === "!bot resume") {
       resumeThread(threadId);
       await message.reply("✅ Bot replies resumed for this thread.");
-      // Delete the command message
       try {
         await message.delete();
       } catch (err) {
