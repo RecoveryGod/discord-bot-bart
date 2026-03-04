@@ -42,7 +42,17 @@ client.on("ready", async () => {
       try {
         const thread = await client.channels.fetch(threadId).catch(() => null);
         if (thread && thread.isThread()) {
-          await thread.send(INACTIVITY_PROMPT_MESSAGE);
+          // Mention the first human member (user added by ticket bot), not the thread owner (ticket bot)
+          let userIdToMention = null;
+          try {
+            const members = await thread.members.fetch();
+            const firstHuman = members.find((m) => !m.user.bot && m.user.id !== client.user.id);
+            if (firstHuman) userIdToMention = firstHuman.user.id;
+          } catch (_) {}
+          const message = userIdToMention
+            ? `<@${userIdToMention}> ${INACTIVITY_PROMPT_MESSAGE}`
+            : INACTIVITY_PROMPT_MESSAGE;
+          await thread.send(message);
           markAsAsked(threadId);
           logger.info("Inactivity prompt sent — thread:", threadId);
         }
@@ -56,9 +66,15 @@ client.on("ready", async () => {
 client.on("threadCreate", async (thread) => {
   if (thread.parentId !== TICKET_CHANNEL_ID) return;
   if (thread.archived) return;
-  const ownerId = thread.ownerId ?? null;
-  trackThread(thread.id, ownerId);
-  logger.info("New ticket thread tracked:", thread.id, "owner:", ownerId || "unknown");
+  // Real ticket owner = first human member (user added by ticket bot), not thread.ownerId (the bot)
+  let ticketOwnerId = null;
+  try {
+    const members = await thread.members.fetch();
+    const firstHuman = members.find((m) => !m.user.bot && m.user.id !== client.user.id);
+    if (firstHuman) ticketOwnerId = firstHuman.user.id;
+  } catch (_) {}
+  trackThread(thread.id, ticketOwnerId);
+  logger.info("New ticket thread tracked:", thread.id, "ticket owner:", ticketOwnerId || "unknown");
 });
 
 client.on("messageCreate", async (message) => {
