@@ -46,8 +46,16 @@ client.on("ready", async () => {
           let userIdToMention = null;
           try {
             const members = await thread.members.fetch();
-            const firstHuman = members.find((m) => !m.user.bot && m.user.id !== client.user.id);
-            if (firstHuman) userIdToMention = firstHuman.user.id;
+            // Pick first non-bot, non-staff human member
+            for (const [, m] of members) {
+              if (m.user.bot || m.user.id === client.user.id) continue;
+              if (STAFF_ROLE_ID) {
+                const guildMember = await thread.guild.members.fetch(m.user.id).catch(() => null);
+                if (guildMember?.roles?.cache?.has(STAFF_ROLE_ID)) continue;
+              }
+              userIdToMention = m.user.id;
+              break;
+            }
           } catch (_) {}
           const message = userIdToMention
             ? `<@${userIdToMention}> ${INACTIVITY_PROMPT_MESSAGE}`
@@ -70,8 +78,16 @@ client.on("threadCreate", async (thread) => {
   let ticketOwnerId = null;
   try {
     const members = await thread.members.fetch();
-    const firstHuman = members.find((m) => !m.user.bot && m.user.id !== client.user.id);
-    if (firstHuman) ticketOwnerId = firstHuman.user.id;
+    // Pick first non-bot, non-staff human member as ticket owner
+    for (const [, m] of members) {
+      if (m.user.bot || m.user.id === client.user.id) continue;
+      if (STAFF_ROLE_ID) {
+        const guildMember = await thread.guild.members.fetch(m.user.id).catch(() => null);
+        if (guildMember?.roles?.cache?.has(STAFF_ROLE_ID)) continue;
+      }
+      ticketOwnerId = m.user.id;
+      break;
+    }
   } catch (_) {}
   trackThread(thread.id, ticketOwnerId);
   logger.info("New ticket thread tracked:", thread.id, "ticket owner:", ticketOwnerId || "unknown");
