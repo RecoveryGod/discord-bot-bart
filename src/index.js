@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
-import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID } from "./config.js";
+import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID } from "./config.js";
 import { hasAmazonGiftCard } from "./services/detection.js";
 import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
@@ -23,6 +23,49 @@ const client = new Client({
 
 const INACTIVITY_PROMPT_MESSAGE =
   "Could you please specify why you opened this ticket? This will help us assist you.";
+
+/**
+ * Extracts the user's custom inquiry from a tickets.bot message.
+ * Checks both plain text content and embed fields/description.
+ * Returns the inquiry string, or null if not found.
+ */
+function extractTicketBotInquiry(content, embeds = []) {
+  const header = "State your inquiry or issue";
+
+  // Helper: extract inquiry from a raw string
+  function parseInquiry(text) {
+    if (!text) return null;
+    const footer = "Powered by tickets.bot";
+    const headerIdx = text.indexOf(header);
+    if (headerIdx === -1) return null;
+    const inquiryStart = headerIdx + header.length;
+    const footerIdx = text.indexOf(footer, inquiryStart);
+    const raw = footerIdx !== -1
+      ? text.slice(inquiryStart, footerIdx)
+      : text.slice(inquiryStart);
+    return raw.trim() || null;
+  }
+
+  // 1. Try plain text content
+  const fromContent = parseInquiry(content);
+  if (fromContent) return fromContent;
+
+  // 2. Try embed description and field values
+  for (const embed of embeds) {
+    const fromDesc = parseInquiry(embed.description);
+    if (fromDesc) return fromDesc;
+    for (const field of (embed.fields ?? [])) {
+      // Field name or value may contain the inquiry
+      if (field.name?.includes(header)) {
+        return field.value?.trim() || null;
+      }
+      const fromValue = parseInquiry(field.value);
+      if (fromValue) return fromValue;
+    }
+  }
+
+  return null;
+}
 
 client.on("ready", async () => {
   logger.info("Bot prêt, guilds:", client.guilds.cache.size);
@@ -99,6 +142,83 @@ client.on("threadCreate", async (thread) => {
 });
 
 client.on("messageCreate", async (message) => {
+  // Handle ticket bot messages: detect custom inquiry and route to AI support
+  if (TICKET_BOT_ID && message.author.id === TICKET_BOT_ID) {
+    logger.info(
+      "[TicketBot] Message received — author:", message.author.id,
+      "| isThread:", message.channel.isThread(),
+      "| parentId:", message.channel.parentId,
+      "| expectedParent:", TICKET_CHANNEL_ID,
+      "| hasContent:", !!message.content,
+      "| embedCount:", message.embeds?.length ?? 0
+    );
+
+    if (message.content) {
+      logger.info("[TicketBot] Content (first 300 chars):", JSON.stringify(message.content.slice(0, 300)));
+    }
+    for (const [i, embed] of (message.embeds ?? []).entries()) {
+      logger.info(
+        `[TicketBot] Embed[${i}] title:`, embed.title,
+        "| description:", JSON.stringify(embed.description?.slice(0, 200)),
+        "| fields:", JSON.stringify((embed.fields ?? []).map(f => ({ name: f.name, value: f.value?.slice(0, 100) })))
+      );
+    }
+
+    if (!message.channel.isThread() || message.channel.parentId !== TICKET_CHANNEL_ID) {
+      logger.info("[TicketBot] Skipping — not a ticket thread.");
+      return;
+    }
+    if (!OPENAI_API_KEY) {
+      logger.info("[TicketBot] Skipping — OPENAI_API_KEY not configured.");
+      return;
+    }
+
+    const inquiry = extractTicketBotInquiry(message.content, message.embeds ?? []);
+    if (!inquiry) {
+      logger.info("[TicketBot] No inquiry found — likely a PayPal or non-inquiry message. Skipping.");
+      return;
+    }
+
+    const threadId = message.channel.id;
+    stopTracking(threadId);
+    logger.info("[TicketBot] Inquiry extracted — thread:", threadId, "| inquiry:", inquiry.slice(0, 100));
+
+    try {
+      if (!checkRateLimit(threadId)) {
+        logger.info("[TicketBot] Rate limit exceeded — thread:", threadId);
+        return;
+      }
+
+      const safeInquiry = redactGiftCardCodes(inquiry);
+      logger.info("[TicketBot] Calling AI support — thread:", threadId);
+
+      const aiResult = await handleAISupport(safeInquiry, message.channel);
+      if (!aiResult) {
+        logger.error("[TicketBot] AI returned null — thread:", threadId);
+        return;
+      }
+
+      const { answer, confidence } = aiResult;
+      logger.info("[TicketBot] AI response — thread:", threadId, "| confidence:", confidence.toFixed(2), "| answer:", answer.slice(0, 100));
+
+      const reply = confidence >= 0.6
+        ? answer
+        : `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`;
+
+      if (await shouldSkipDuplicateReply(message.channel, reply)) {
+        logger.info("[TicketBot] Duplicate reply skipped — thread:", threadId);
+        return;
+      }
+
+      await message.channel.send(reply);
+      recordBotMessage(threadId, reply);
+      logger.info("[TicketBot] Reply sent — thread:", threadId, "| confidence:", confidence.toFixed(2));
+    } catch (err) {
+      logger.error("[TicketBot] Error handling inquiry:", err?.message, "| thread:", message.channel.id);
+    }
+    return;
+  }
+
   if (message.author.bot) return;
   if (!message.channel.isThread()) return;
   if (message.channel.parentId !== TICKET_CHANNEL_ID) return;
