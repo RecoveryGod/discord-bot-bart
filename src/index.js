@@ -208,8 +208,8 @@ client.on("messageCreate", async (message) => {
     // Redact sensitive codes before processing
     const safeContent = redactGiftCardCodes(content);
 
-    // Get AI response
-    const aiResult = await handleAISupport(safeContent);
+    // Get AI response (pass channel for conversation history)
+    const aiResult = await handleAISupport(safeContent, message.channel);
 
     if (!aiResult) {
       logger.error("AI service returned null for thread:", message.channel.id);

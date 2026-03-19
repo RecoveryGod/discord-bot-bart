@@ -1,6 +1,7 @@
 import { OPENAI_API_KEY } from "../config.js";
 import { searchFAQ, formatFAQContext, FAQ_MIN_SCORE } from "./knowledgeBase.js";
 import { redactGiftCardCodes } from "../utils/redact.js";
+import * as logger from "../utils/logger.js";
 
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 0.3;
@@ -130,11 +131,37 @@ Only answer based on the provided knowledge base context.
 If the knowledge base does not contain enough information, escalate.
 `;
 
+const HISTORY_LIMIT = 10;
+
+/**
+ * Fetches the last N messages from a thread as conversation history.
+ * Excludes the current message (last item, already in userMessage).
+ * Returns array of { role: "user"|"assistant", content: string }.
+ */
+async function fetchThreadHistory(channel) {
+  try {
+    const fetched = await channel.messages.fetch({ limit: HISTORY_LIMIT });
+    // Discord returns newest first — reverse to chronological order
+    const chronological = Array.from(fetched.values()).reverse();
+    // Drop the last message (current one, already passed as userMessage)
+    const history = chronological.slice(0, -1);
+    return history
+      .map((msg) => ({
+        role: msg.author.id === channel.client.user.id ? "assistant" : "user",
+        content: redactGiftCardCodes(msg.content || ""),
+      }))
+      .filter((m) => m.content.trim() !== "");
+  } catch (err) {
+    logger.error("Failed to fetch thread history:", err?.message);
+    return [];
+  }
+}
+
 /**
  * Calls OpenAI API to generate a support response.
  * Returns { answer: string, confidence: number } or null on error.
  */
-export async function generateAIResponse(userMessage, faqContext) {
+export async function generateAIResponse(userMessage, faqContext, history = []) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY not configured");
   }
@@ -147,6 +174,7 @@ export async function generateAIResponse(userMessage, faqContext) {
       role: "system",
       content: SYSTEM_PROMPT,
     },
+    ...history,
     {
       role: "user",
       content: `Knowledge Base:\n${faqContext}\n\nCustomer Question: ${safeMessage}\n\nReturn ONLY valid JSON (no markdown, no code fences) with this shape:\n{"answer":"...", "confidence": 0.0}\n\nRules:\n- If the Knowledge Base matches the question: use it and set confidence >= 0.6\n- If the Knowledge Base does NOT match: provide a helpful general response OR escalate to human\n- For urgent issues (waiting times, complaints, delays): escalate to human with confidence < 0.6\n- confidence: number between 0 and 1\n- if unsure or Knowledge Base doesn't match: set confidence < 0.6 and answer: "A human support agent will assist you shortly."\n- never ask for full gift card codes\n- CRITICAL: If the Knowledge Base contains URLs or links, you MUST include ALL of them in your answer verbatim\n- Preserve line breaks using \\n in the JSON string\n- Do not summarize URLs or replace them with generic text\n`,
@@ -224,13 +252,13 @@ export async function generateAIResponse(userMessage, faqContext) {
  * Main function to handle AI support request.
  * Returns { answer: string, confidence: number } or null if should skip.
  */
-export async function handleAISupport(userMessage) {
+export async function handleAISupport(userMessage, channel) {
   // Redact sensitive data
   const safeMessage = redactGiftCardCodes(userMessage);
 
   // Search knowledge base
   const { entries: relevantFAQ, bestScore } = searchFAQ(safeMessage);
-  
+
   // If FAQ score is too low, escalate directly without calling OpenAI
   if (bestScore < FAQ_MIN_SCORE) {
     return {
@@ -241,8 +269,11 @@ export async function handleAISupport(userMessage) {
 
   const faqContext = formatFAQContext(relevantFAQ);
 
-  // Generate AI response
-  const result = await generateAIResponse(safeMessage, faqContext);
+  // Fetch conversation history for context (fails gracefully to empty array)
+  const history = channel ? await fetchThreadHistory(channel) : [];
+
+  // Generate AI response with history
+  const result = await generateAIResponse(safeMessage, faqContext, history);
 
   return result;
 }
