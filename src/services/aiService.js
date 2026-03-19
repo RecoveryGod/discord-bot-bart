@@ -5,7 +5,7 @@ import * as logger from "../utils/logger.js";
 
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 0.3;
-const MAX_TOKENS = 500;
+const MAX_TOKENS = 1000;
 
 const SYSTEM_PROMPT = `You are the official automated support assistant for the RecoveryGods Discord server.
 
@@ -161,13 +161,17 @@ async function fetchThreadHistory(channel) {
  * Calls OpenAI API to generate a support response.
  * Returns { answer: string, confidence: number } or null on error.
  */
-export async function generateAIResponse(userMessage, faqContext, history = []) {
+export async function generateAIResponse(userMessage, faqContext, history = [], isRetry = false) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY not configured");
   }
 
   // Always redact gift card codes before sending to OpenAI
   const safeMessage = redactGiftCardCodes(userMessage);
+
+  const retryInstruction = isRetry
+    ? "\n- RETRY: Your previous attempt had low confidence. Provide the most helpful answer you can based on the knowledge base, even if partial. Only set confidence < 0.6 if the topic is truly outside your knowledge base."
+    : "";
 
   const messages = [
     {
@@ -177,7 +181,7 @@ export async function generateAIResponse(userMessage, faqContext, history = []) 
     ...history,
     {
       role: "user",
-      content: `Knowledge Base:\n${faqContext}\n\nCustomer Question: ${safeMessage}\n\nReturn ONLY valid JSON (no markdown, no code fences) with this shape:\n{"answer":"...", "confidence": 0.0}\n\nRules:\n- If the Knowledge Base matches the question: use it and set confidence >= 0.6\n- If the Knowledge Base does NOT match: provide a helpful general response OR escalate to human\n- For urgent issues (waiting times, complaints, delays): escalate to human with confidence < 0.6\n- confidence: number between 0 and 1\n- if unsure or Knowledge Base doesn't match: set confidence < 0.6 and answer: "A human support agent will assist you shortly."\n- never ask for full gift card codes\n- CRITICAL: If the Knowledge Base contains URLs or links, you MUST include ALL of them in your answer verbatim\n- Preserve line breaks using \\n in the JSON string\n- Do not summarize URLs or replace them with generic text\n`,
+      content: `Knowledge Base:\n${faqContext}\n\nCustomer Question: ${safeMessage}\n\nReturn ONLY valid JSON (no markdown, no code fences) with this shape:\n{"answer":"...", "confidence": 0.0}\n\nRules:\n- If the Knowledge Base matches the question: use it and set confidence >= 0.6\n- If the Knowledge Base does NOT match: provide a helpful general response OR escalate to human\n- For urgent issues (waiting times, complaints, delays): escalate to human with confidence < 0.6\n- confidence: number between 0 and 1\n- if unsure or Knowledge Base doesn't match: set confidence < 0.6 and answer: "A human support agent will assist you shortly."\n- never ask for full gift card codes\n- CRITICAL: If the Knowledge Base contains URLs or links, you MUST include ALL of them in your answer verbatim\n- Preserve line breaks using \\n in the JSON string\n- Do not summarize URLs or replace them with generic text\n${retryInstruction}`,
     },
   ];
 
@@ -272,8 +276,16 @@ export async function handleAISupport(userMessage, channel) {
   // Fetch conversation history for context (fails gracefully to empty array)
   const history = channel ? await fetchThreadHistory(channel) : [];
 
-  // Generate AI response with history
+  // First attempt
   const result = await generateAIResponse(safeMessage, faqContext, history);
+
+  // If confidence is too low, retry once before escalating
+  if (result.confidence < 0.6) {
+    logger.info("Low confidence on first attempt:", result.confidence.toFixed(2), "— retrying...");
+    const retry = await generateAIResponse(safeMessage, faqContext, history, true);
+    logger.info("Retry confidence:", retry.confidence.toFixed(2));
+    return retry;
+  }
 
   return result;
 }
