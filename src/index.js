@@ -8,7 +8,7 @@ import { checkRateLimit } from "./services/rateLimiter.js";
 import { handleAISupport } from "./services/aiService.js";
 import { updateStaffActivity, isThreadPaused, pauseThread, pauseThreadIndefinitely, resumeThread } from "./services/staffActivity.js";
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
-import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked } from "./services/threadInactivity.js";
+import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking } from "./services/threadInactivity.js";
 import * as logger from "./utils/logger.js";
 
 loadConfig();
@@ -41,7 +41,12 @@ client.on("ready", async () => {
     for (const { threadId } of toPrompt) {
       try {
         const thread = await client.channels.fetch(threadId).catch(() => null);
-        if (thread && thread.isThread()) {
+        if (!thread || !thread.isThread()) continue;
+        if (thread.archived || thread.locked) {
+          stopTracking(threadId);
+          continue;
+        }
+        if (thread.isThread()) {
           // Mention the first human member (user added by ticket bot), not the thread owner (ticket bot)
           let userIdToMention = null;
           try {
