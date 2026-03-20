@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { Client, GatewayIntentBits } from "discord.js";
-import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID } from "./config.js";
+import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
+import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID } from "./config.js";
 import { hasAmazonGiftCard } from "./services/detection.js";
 import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
@@ -9,6 +9,7 @@ import { handleAISupport } from "./services/aiService.js";
 import { updateStaffActivity, isThreadPaused, pauseThread, pauseThreadIndefinitely, resumeThread } from "./services/staffActivity.js";
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
 import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking } from "./services/threadInactivity.js";
+import { searchPrices } from "./services/priceService.js";
 import * as logger from "./utils/logger.js";
 
 loadConfig();
@@ -78,6 +79,36 @@ client.on("ready", async () => {
     tickets ? TICKET_CHANNEL_ID : "introuvable"
   );
 
+  // Register /price slash command
+  if (CLIENT_ID) {
+    try {
+      const rest = new REST().setToken(BOT_TOKEN);
+      const commands = [
+        {
+          name: "price",
+          description: "Look up the price of a product",
+          options: [
+            {
+              name: "product",
+              description: "Product name to search (e.g. Stand GTA, 2take1 Lifetime)",
+              type: 3, // STRING
+              required: true,
+            },
+          ],
+        },
+      ];
+      const route = GUILD_ID
+        ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
+        : Routes.applicationCommands(CLIENT_ID);
+      await rest.put(route, { body: commands });
+      logger.info("/price command registered —", GUILD_ID ? `guild ${GUILD_ID}` : "global");
+    } catch (err) {
+      logger.error("Failed to register /price command:", err?.message);
+    }
+  } else {
+    logger.info("CLIENT_ID not set — /price slash command not registered");
+  }
+
   // Check every 15s for threads where creator hasn't replied after 1 min
   setInterval(async () => {
     const toPrompt = getThreadsToPrompt();
@@ -139,6 +170,27 @@ client.on("threadCreate", async (thread) => {
   } catch (_) {}
   trackThread(thread.id, ticketOwnerId);
   logger.info("New ticket thread tracked:", thread.id, "ticket owner:", ticketOwnerId || "unknown");
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand() || interaction.commandName !== "price") return;
+
+  const query = interaction.options.getString("product");
+  logger.info("/price command used by:", interaction.user.tag, "| query:", query);
+
+  await interaction.deferReply();
+
+  const results = searchPrices(query);
+
+  if (results.length === 0) {
+    await interaction.editReply(`No products found matching **${query}**. Try a different name (e.g. \`Stand GTA\`, \`2take1 Lifetime\`, \`Kernaim CS2\`).`);
+    return;
+  }
+
+  const lines = results.map((p) => `• **${p.name}** — €${p.price.toFixed(2)}`);
+  const response = `**Price results for "${query}":**\n${lines.join("\n")}`;
+  await interaction.editReply(response);
+  logger.info("/price reply sent —", results.length, "result(s) for query:", query);
 });
 
 client.on("messageCreate", async (message) => {

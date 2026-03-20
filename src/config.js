@@ -21,6 +21,8 @@ export const TICKET_CHANNEL_ID = process.env.TICKET_CHANNEL_ID?.trim() ?? "";
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() ?? "";
 export const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID?.trim() ?? "";
 export const TICKET_BOT_ID = process.env.TICKET_BOT_ID?.trim() ?? "";
+export const CLIENT_ID = process.env.CLIENT_ID?.trim() ?? "";
+export const GUILD_ID = process.env.GUILD_ID?.trim() ?? "";
 
 export function loadConfig() {
   validate();
