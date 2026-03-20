@@ -1,5 +1,6 @@
 import { OPENAI_API_KEY } from "../config.js";
 import { searchFAQ, formatFAQContext, FAQ_MIN_SCORE } from "./knowledgeBase.js";
+import { searchPrices, formatPriceContext } from "./priceService.js";
 import { redactGiftCardCodes } from "../utils/redact.js";
 import * as logger from "../utils/logger.js";
 
@@ -161,7 +162,7 @@ async function fetchThreadHistory(channel) {
  * Calls OpenAI API to generate a support response.
  * Returns { answer: string, confidence: number } or null on error.
  */
-export async function generateAIResponse(userMessage, faqContext, history = [], isRetry = false) {
+export async function generateAIResponse(userMessage, faqContext, history = [], isRetry = false, priceContext = null) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY not configured");
   }
@@ -173,6 +174,8 @@ export async function generateAIResponse(userMessage, faqContext, history = [], 
     ? "\n- RETRY: Your previous attempt had low confidence. Provide the most helpful answer you can based on the knowledge base, even if partial. Only set confidence < 0.6 if the topic is truly outside your knowledge base."
     : "";
 
+  const priceSection = priceContext ? `\n\n${priceContext}` : "";
+
   const messages = [
     {
       role: "system",
@@ -181,7 +184,7 @@ export async function generateAIResponse(userMessage, faqContext, history = [], 
     ...history,
     {
       role: "user",
-      content: `Knowledge Base:\n${faqContext}\n\nCustomer Question: ${safeMessage}\n\nReturn ONLY valid JSON (no markdown, no code fences) with this shape:\n{"answer":"...", "confidence": 0.0}\n\nRules:\n- If the Knowledge Base matches the question: use it and set confidence >= 0.6\n- If the Knowledge Base does NOT match: provide a helpful general response OR escalate to human\n- For urgent issues (waiting times, complaints, delays): escalate to human with confidence < 0.6\n- confidence: number between 0 and 1\n- if unsure or Knowledge Base doesn't match: set confidence < 0.6 and answer: "A human support agent will assist you shortly."\n- never ask for full gift card codes\n- CRITICAL: If the Knowledge Base contains URLs or links, you MUST include ALL of them in your answer verbatim\n- Preserve line breaks using \\n in the JSON string\n- Do not summarize URLs or replace them with generic text\n${retryInstruction}`,
+      content: `Knowledge Base:\n${faqContext}${priceSection}\n\nCustomer Question: ${safeMessage}\n\nReturn ONLY valid JSON (no markdown, no code fences) with this shape:\n{"answer":"...", "confidence": 0.0}\n\nRules:\n- If the Knowledge Base matches the question: use it and set confidence >= 0.6\n- If the Knowledge Base does NOT match: provide a helpful general response OR escalate to human\n- For urgent issues (waiting times, complaints, delays): escalate to human with confidence < 0.6\n- confidence: number between 0 and 1\n- if unsure or Knowledge Base doesn't match: set confidence < 0.6 and answer: "A human support agent will assist you shortly."\n- never ask for full gift card codes\n- CRITICAL: If the Knowledge Base contains URLs or links, you MUST include ALL of them in your answer verbatim\n- If Product Prices are provided and the user asks about pricing, list the relevant prices clearly in your answer\n- Preserve line breaks using \\n in the JSON string\n- Do not summarize URLs or replace them with generic text\n${retryInstruction}`,
     },
   ];
 
@@ -260,11 +263,18 @@ export async function handleAISupport(userMessage, channel) {
   // Redact sensitive data
   const safeMessage = redactGiftCardCodes(userMessage);
 
-  // Search knowledge base
+  // Search knowledge base and price list in parallel
   const { entries: relevantFAQ, bestScore } = searchFAQ(safeMessage);
+  const matchedPrices = searchPrices(safeMessage);
+  const priceContext = formatPriceContext(matchedPrices);
 
-  // If FAQ score is too low, escalate directly without calling OpenAI
-  if (bestScore < FAQ_MIN_SCORE) {
+  if (priceContext) {
+    logger.info("Price context found —", matchedPrices.length, "product(s) matched");
+  }
+
+  // Only escalate early if neither FAQ nor prices have anything relevant
+  if (bestScore < FAQ_MIN_SCORE && !priceContext) {
+    logger.info("No FAQ or price match — escalating directly");
     return {
       answer: "A human support agent will assist you shortly.",
       confidence: 0,
@@ -277,12 +287,12 @@ export async function handleAISupport(userMessage, channel) {
   const history = channel ? await fetchThreadHistory(channel) : [];
 
   // First attempt
-  const result = await generateAIResponse(safeMessage, faqContext, history);
+  const result = await generateAIResponse(safeMessage, faqContext, history, false, priceContext);
 
   // If confidence is too low, retry once before escalating
   if (result.confidence < 0.6) {
     logger.info("Low confidence on first attempt:", result.confidence.toFixed(2), "— retrying...");
-    const retry = await generateAIResponse(safeMessage, faqContext, history, true);
+    const retry = await generateAIResponse(safeMessage, faqContext, history, true, priceContext);
     logger.info("Retry confidence:", retry.confidence.toFixed(2));
     return retry;
   }

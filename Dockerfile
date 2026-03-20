@@ -7,6 +7,7 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 COPY data ./data
+COPY prices.py ./
 RUN chown -R node:node /app
 
 USER node
