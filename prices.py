@@ -47,52 +47,14 @@ prices = {
     "5450": 11.28,  # Nixware - CS2 - 90 Days
     "5460": 1.02,  # Nixware - CS2 - HWID Reset
     "3000-1": 27.75,  # Rebound - GTA VIP License Key
-    "3200-1": 20.5,  # '- GTA Lifetime License Key
-    "140": 14.0,  # Impulse – Essential License Key
-    "160": 25.0,  # Phantom-X – Premium License Key
-    "170": 23.0,  # Luna – License Key
     "178": 35.0,  # Fragment – License Key
-    "179": 15.0,  # Ilusion – License Key
-    "1830": 6.0,  # 2take1 – 40 days standard key
-    "1831": 12.0,  # 2take1 – 90 days standard key
-    "1832": 38.0,  # 2take1 – Lifetime Standard key
-    "1833": 9.0,  # 2take1 – 40 days VIP key
-    "1834": 18.0,  # 2take1 – 90 days VIP key
-    "1835": 60.0,  # 2take1 – Lifetime VIP key
-    "190": 25.0,  # Ozark RDR2 – Lifetime License Key
-    "191": 18.0,  # Ozark GTA – Lifetime License Key
-    "1910": 25.0,  # Paragon GTA – Premium License Key
-    "1911": 37.0,  # Paragon GTA – Platinum License Key
-    "1913": 24.0,  # Paragon GTA – Premium to Platinum Upgrade Key
-    "2000": 18.0,  # Delusion – Lifetime License Key
     "2110": 15.0,  # X-Force – GTA - Essential
     "2120": 25.0,  # X-Force – GTA - Ace Activation + 7 days
     "2130": 25.0,  # X-Force – GTA - Ace 30 days Extension
-    "2200": 27.0,  # Cherax – Lifetime License Key
-    "240": 10.0,  # Impulse – Essential to Standard Upgrade Key
-    "260": 33.0,  # Phantom-X – Deluxe License Key
-    "2802": 20.0,  # Hares - License Key - VIP
-    "2900": 45.0,  # Fortitude - Lifetime License Key
-    "2901": 17.0,  # Fortitude - 30 Days License Key
+    "2900": 45.0,  # Fortitude - GTA - Lifetime License Key
+    "2901": 17.0,  # Fortitude - GTA - 30 Days License Key
     "3000": 18.5,  # Rebound - GTA Premium License Key
     "3010": 11.1,  # Rebound - GTA VIP Upgrade Key
-    "3100": 30.0,  # South RDR2 – Lifetime License Key
-    "3200": 6.5,  # '- GTA 30 Days License Key
-    "340": 25.0,  # Impulse – Standard License Key
-    "3520": 27.75,  # Rebound - GTA - VIP
-    "3530": 11.1,  # Rebound - GTA - Upgrade
-    "360": 8.0,  # Phantom-X – Premium to Deluxe Upgrade Key
-    "3710": 6.0,  # 2take1 – GTA - Standard 40 days
-    "3720": 12.0,  # 2take1 – GTA - Standard 90 days
-    "3730": 38.0,  # 2take1 – GTA - Standard Lifetime
-    "3740": 9.0,  # 2take1 – GTA - VIP 40 days
-    "3750": 18.0,  # 2take1 – GTA - VIP 90 days
-    "3760": 60.0,  # 2take1 – GTA - VIP Lifetime
-    "3770": 22.0,  # 2take1 – GTA - Standard to VIP Upgrade
-    "3810": 25.0,  # Phantom-X – GTA - Premium
-    "3820": 34.0,  # Phantom-X – GTA - Digital Deluxe
-    "3830": 3.8,  # Phantom-X – GTA - Premium Update
-    "3840": 9.5,  # Phantom-X – GTA - Premium to Deluxe Upgrade
     "3910": 7.53,  # Predator Deadlock - 1 Week
     "3920": 16.03,  # Predator Deadlock - 1 Month
     "3930": 33.0,  # Predator Deadlock - 3 Months
@@ -104,7 +66,6 @@ prices = {
     "4110": 7.0,  # redENGINE FiveM Spoofer - 1 Week
     "4120": 13.2,  # redENGINE FiveM Spoofer - 1 Month
     "4210": 8.87,  # Phaze Mod Menu - 1 Week
-    "440": 15.0,  # Impulse – Standard to VIP Upgrade Key
     "4610": 9.3,  # Lexis - Apex Legends - 3 Days
     "4620": 14.6,  # Lexis - Apex Legends - 1 Week
     "4630": 24.3,  # Lexis - Apex Legends - 1 Month
@@ -120,7 +81,6 @@ prices = {
     "4930": 70.0,  # Infamous – GTA - Tester Legacy & Enhanced
     "5010": 41.0,  # Infamous – FiveM - Full
     "5110": 23.5,  # Infamous – RDR2 - Full
-    "540": 50.0,  # Impulse – VIP License Key
     "5510": 8.8,  # Kernaim - CS2 - 1 Week
     "5520": 14.7,  # Kernaim - CS2 - 1 Month
     "5530": 38.9,  # Kernaim - CS2 - 3 Months
@@ -130,12 +90,9 @@ prices = {
     "5710": 19.99,  # Kernaim - ARC Raiders - 1 Week
     "5720": 39.99,  # Kernaim - ARC Raiders - 1 Month
     "5730": 79.99,  # Kernaim - ARC Raiders - 3 Months
-    "580": 20.0,  # Robust – Elite License Key
     "5810": 19.99,  # Kernaim - Black Ops 7 - 1 Week
     "5820": 29.99,  # Kernaim - Black Ops 7 - 1 Month
     "5830": 69.99,  # Kernaim - Black Ops 7 - 3 Months
-    "585": 12.0,  # Robust – Prime to Elite Upgrade Key
-    "590": 10.0,  # Robust – Prime License Key
     "5910": 19.99,  # Kernaim - Black Ops 6 - 1 Week
     "5920": 29.99,  # Kernaim - Black Ops 6 - 1 Month
     "5930": 69.99,  # Kernaim - Black Ops 6 - 3 Months
@@ -175,10 +132,6 @@ prices = {
     "7010": 10.0,  # Ethereal – RDR2 - 1 Month
     "7020": 25.0,  # Ethereal – RDR2 - Lifetime
     "7110": 17.0,  # Scooby – GTA - Premium
-    "7202": 6.0,  # Assos – Mod Menu - Lite 30 days
-    "7203": 20.0,  # Assos – Mod Menu - Lite Lifetime
-    "7204": 10.0,  # Assos – Mod Menu - Premium 30 days
-    "7205": 30.0,  # Assos – Mod Menu - Premium Lifetime
     "7210": 8.5,  # Rift – FiveM - 1 Week
     "7220": 17.0,  # Rift – FiveM - 1 Month
     "7230": 34.1,  # Rift – FiveM - Lifetime
