@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -45,7 +45,7 @@ export function searchFAQ(query) {
     });
     
     // Question contains query terms
-    const queryWords = lowerQuery.split(/\s+/);
+    const queryWords = lowerQuery.split(/\s+/).filter((w) => w.length > 2);
     queryWords.forEach((word) => {
       if (lowerQuestion.includes(word)) score += 1;
       if (lowerAnswer.includes(word)) score += 0.5;
@@ -54,13 +54,13 @@ export function searchFAQ(query) {
     return { ...entry, score };
   });
   
-  // Sort by score and get top 3
+  // Sort by score and get top 5
   const filtered = scored
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
   
   const bestScore = filtered.length > 0 ? filtered[0].score : 0;
-  const topEntries = filtered.slice(0, 3).map(({ score, ...entry }) => entry);
+  const topEntries = filtered.slice(0, 5).map(({ score, ...entry }) => entry);
   
   return { entries: topEntries, bestScore };
 }
@@ -87,3 +87,15 @@ A: ${entry.answer}`;
  * If best score is below this, FAQ is considered not relevant.
  */
 export const FAQ_MIN_SCORE = 2;
+
+/**
+ * Appends a learned Q&A entry to faq.json and resets the in-memory cache.
+ * Called when staff teaches the bot via the !learn command.
+ */
+export function appendLearnedEntry(question, answer, keywords) {
+  loadFAQ(); // ensure faqData is populated before spreading
+  const faqPath = join(__dirname, "../../data/faq.json");
+  const updated = [...faqData, { question, answer, keywords }];
+  writeFileSync(faqPath, JSON.stringify(updated, null, 2), "utf-8");
+  faqData = null; // invalidate cache so next searchFAQ reloads from disk
+}

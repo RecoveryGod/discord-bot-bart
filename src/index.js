@@ -10,6 +10,7 @@ import { updateStaffActivity, isThreadPaused, pauseThread, pauseThreadIndefinite
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
 import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking } from "./services/threadInactivity.js";
 import { searchPrices } from "./services/priceService.js";
+import { appendLearnedEntry } from "./services/knowledgeBase.js";
 import * as logger from "./utils/logger.js";
 
 loadConfig();
@@ -255,7 +256,7 @@ client.on("messageCreate", async (message) => {
 
       const reply = confidence >= 0.6
         ? answer
-        : `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`;
+        : `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
 
       if (await shouldSkipDuplicateReply(message.channel, reply)) {
         logger.info("[TicketBot] Duplicate reply skipped — thread:", threadId);
@@ -284,6 +285,71 @@ client.on("messageCreate", async (message) => {
 
   // Handle staff commands: !pause, !mute, !resume (accept both "!bot mute" and "!bot-mute")
   if (isStaff && content) {
+    // !learn command: staff teaches the bot a new Q&A answer
+    if (content.trim().toLowerCase().startsWith("!learn ")) {
+      const learnedAnswer = content.trim().slice("!learn ".length).trim();
+      if (!learnedAnswer) {
+        await message.reply("Usage: `!learn <your answer here>`");
+        return;
+      }
+
+      // Find the last non-bot, non-staff user message in this thread
+      let userQuestion = null;
+      try {
+        const fetched = await message.channel.messages.fetch({ limit: 20 });
+        const msgs = Array.from(fetched.values()).reverse();
+        for (const m of msgs) {
+          if (m.author.bot) continue;
+          if (m.id === message.id) continue;
+          const memberData = await message.guild.members.fetch(m.author.id).catch(() => null);
+          const isMemberStaff = STAFF_ROLE_ID && memberData?.roles?.cache?.has(STAFF_ROLE_ID);
+          if (!isMemberStaff) {
+            userQuestion = redactGiftCardCodes(m.content || "");
+            break;
+          }
+        }
+      } catch (err) {
+        logger.error("!learn: failed to fetch thread history:", err?.message);
+      }
+
+      if (!userQuestion) {
+        await message.reply("Could not find the original customer question in this thread.");
+        return;
+      }
+
+      // Extract keywords: words > 2 chars, no stop words, max 6
+      const stopWords = new Set(["the", "and", "for", "not", "you", "are", "this", "that", "with", "have", "was", "but", "from", "can", "will", "just", "all", "one", "out", "get", "how", "why", "what", "when", "where", "who", "its", "has", "had", "him", "she", "been", "being", "there", "their", "them", "than", "then", "into", "your", "my", "me", "we", "he", "it", "is", "do", "did", "does", "an", "a", "i", "or", "at", "by", "be", "to", "of", "in", "on", "up", "if", "so", "as", "no", "any"]);
+      const keywords = userQuestion
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !stopWords.has(w))
+        .slice(0, 6);
+
+      try {
+        appendLearnedEntry(userQuestion, learnedAnswer, keywords);
+      } catch (err) {
+        logger.error("!learn: failed to save entry:", err?.message);
+        await message.reply("Failed to save to knowledge base. Check bot logs.");
+        return;
+      }
+
+      // Send the learned answer to the customer
+      await message.channel.send(learnedAnswer);
+
+      // Confirm to staff, then auto-delete the confirmation after 6 seconds
+      const confirm = await message.reply(
+        `✅ Saved to knowledge base.\nKeywords extracted: \`${keywords.length > 0 ? keywords.join(", ") : "none"}\``
+      );
+      setTimeout(() => confirm.delete().catch(() => {}), 6000);
+
+      // Delete the !learn command to keep the thread clean
+      try { await message.delete(); } catch (_) {}
+
+      logger.info("!learn: new entry saved — thread:", threadId, "| question:", userQuestion.slice(0, 80), "| keywords:", keywords.join(", "));
+      return;
+    }
+
     const lowerContent = content.toLowerCase().trim();
     const cmd = lowerContent.replace(/-/g, " ").replace(/\s+/g, " ");
     if (cmd === "!pause" || cmd === "!bot pause") {
@@ -417,7 +483,7 @@ client.on("messageCreate", async (message) => {
       );
     } else {
       // Escalate to human
-      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`;
+      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
       // Check for duplicate before replying
       if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
         logger.info(
@@ -439,7 +505,7 @@ client.on("messageCreate", async (message) => {
     logger.error("Erreur lors du support IA:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
     // Fallback: escalate to human on error
     try {
-      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`;
+      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
       // Check for duplicate before replying
       if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
         logger.info(
