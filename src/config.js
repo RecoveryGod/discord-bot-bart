@@ -23,6 +23,8 @@ export const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID?.trim() ?? "";
 export const TICKET_BOT_ID = process.env.TICKET_BOT_ID?.trim() ?? "";
 export const CLIENT_ID = process.env.CLIENT_ID?.trim() ?? "";
 export const GUILD_ID = process.env.GUILD_ID?.trim() ?? "";
+export const ANALYTICS_CHANNEL_ID = process.env.ANALYTICS_CHANNEL_ID?.trim() || null;
+export const AUTO_CLOSE_HOURS = process.env.AUTO_CLOSE_HOURS ? parseFloat(process.env.AUTO_CLOSE_HOURS) : 48;
 
 export function loadConfig() {
   validate();

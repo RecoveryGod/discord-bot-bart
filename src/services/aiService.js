@@ -127,6 +127,8 @@ PRIORITY
 
 Only answer based on the provided knowledge base context.
 If the knowledge base does not contain enough information, escalate.
+
+Always reply in the same language as the customer's message. If the customer writes in French, reply entirely in French. If they write in English, reply in English.
 `;
 
 const HISTORY_LIMIT = 10;
@@ -282,6 +284,7 @@ export async function handleAISupport(userMessage, channel) {
     return {
       answer: "A human support agent will assist you shortly.",
       confidence: 0,
+      escalationReason: "no_faq_match",
     };
   }
 

@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
-import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID } from "./config.js";
+import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS } from "./config.js";
 import { hasAmazonGiftCard } from "./services/detection.js";
 import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
@@ -8,9 +8,10 @@ import { checkRateLimit } from "./services/rateLimiter.js";
 import { handleAISupport } from "./services/aiService.js";
 import { updateStaffActivity, isThreadPaused, pauseThread, pauseThreadIndefinitely, resumeThread } from "./services/staffActivity.js";
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
-import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking } from "./services/threadInactivity.js";
+import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking, startIdleTracking, recordActivity, stopIdleTracking, getThreadsToWarn, getThreadsToClose, markWarningSent } from "./services/threadInactivity.js";
 import { searchPrices } from "./services/priceService.js";
 import { appendLearnedEntry } from "./services/knowledgeBase.js";
+import * as analytics from "./services/analyticsService.js";
 import * as logger from "./utils/logger.js";
 
 loadConfig();
@@ -148,6 +149,36 @@ client.on("ready", async () => {
         logger.error("Failed to send inactivity prompt:", err?.message, "thread:", threadId);
       }
     }
+
+    // Auto-close idle tickets
+    for (const threadId of getThreadsToWarn(AUTO_CLOSE_HOURS)) {
+      try {
+        const thread = await client.channels.fetch(threadId);
+        if (!thread || thread.archived || thread.locked) {
+          stopIdleTracking(threadId);
+          continue;
+        }
+        await thread.send(`⚠️ This ticket has been inactive for ${AUTO_CLOSE_HOURS} hours. It will be automatically closed in 24 hours unless you reply.`);
+        markWarningSent(threadId);
+      } catch (err) {
+        logger.error(`Auto-close warning failed for ${threadId}: ${err.message}`);
+      }
+    }
+
+    for (const threadId of getThreadsToClose()) {
+      try {
+        const thread = await client.channels.fetch(threadId);
+        if (!thread || thread.archived) {
+          stopIdleTracking(threadId);
+          continue;
+        }
+        await thread.send('🔒 This ticket has been closed due to inactivity.');
+        await thread.setArchived(true);
+        stopIdleTracking(threadId);
+      } catch (err) {
+        logger.error(`Auto-close failed for ${threadId}: ${err.message}`);
+      }
+    }
   }, 15_000);
 });
 
@@ -170,6 +201,8 @@ client.on("threadCreate", async (thread) => {
     }
   } catch (_) {}
   trackThread(thread.id, ticketOwnerId);
+  startIdleTracking(thread.id);
+  analytics.trackTicketOpened(thread.id);
   logger.info("New ticket thread tracked:", thread.id, "ticket owner:", ticketOwnerId || "unknown");
 });
 
@@ -251,7 +284,7 @@ client.on("messageCreate", async (message) => {
         return;
       }
 
-      const { answer, confidence } = aiResult;
+      const { answer, confidence, escalationReason } = aiResult;
       logger.info("[TicketBot] AI response — thread:", threadId, "| confidence:", confidence.toFixed(2), "| answer:", answer.slice(0, 100));
 
       const reply = confidence >= 0.6
@@ -265,6 +298,13 @@ client.on("messageCreate", async (message) => {
 
       await message.channel.send(reply);
       recordBotMessage(threadId, reply);
+
+      if (confidence >= 0.6) {
+        analytics.trackAIReply(threadId, confidence);
+      } else {
+        analytics.trackEscalation(threadId, escalationReason || 'low_confidence');
+      }
+
       logger.info("[TicketBot] Reply sent — thread:", threadId, "| confidence:", confidence.toFixed(2));
     } catch (err) {
       logger.error("[TicketBot] Error handling inquiry:", err?.message, "| thread:", message.channel.id);
@@ -282,6 +322,7 @@ client.on("messageCreate", async (message) => {
 
   // Notify inactivity tracker: creator or staff replied → stop tracking
   onMessageInThread(threadId, message.author.id, isStaff);
+  recordActivity(message.channelId);
 
   // Handle staff commands: !pause, !mute, !resume (accept both "!bot mute" and "!bot-mute")
   if (isStaff && content) {
@@ -334,6 +375,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
 
+      analytics.trackLearnEvent(message.channelId);
+
       // Send the learned answer to the customer
       await message.channel.send(learnedAnswer);
 
@@ -347,6 +390,100 @@ client.on("messageCreate", async (message) => {
       try { await message.delete(); } catch (_) {}
 
       logger.info("!learn: new entry saved — thread:", threadId, "| question:", userQuestion.slice(0, 80), "| keywords:", keywords.join(", "));
+      return;
+    }
+
+    // !bad command: staff replies to a bad bot message to correct it
+    // Usage: right-click a bot message → Reply → type "!bad <correct answer>"
+    if (content.trim().toLowerCase().startsWith("!bad")) {
+      const correctAnswer = content.trim().slice("!bad".length).trim();
+
+      if (!message.reference?.messageId) {
+        const hint = await message.reply("Usage: reply directly to the bad bot message and type `!bad <correct answer>`.");
+        setTimeout(() => hint.delete().catch(() => {}), 6000);
+        try { await message.delete(); } catch (_) {}
+        return;
+      }
+
+      if (!correctAnswer) {
+        const hint = await message.reply("Usage: `!bad <correct answer>` — include the correct answer after `!bad`.");
+        setTimeout(() => hint.delete().catch(() => {}), 6000);
+        try { await message.delete(); } catch (_) {}
+        return;
+      }
+
+      // Fetch the referenced (bad) message
+      let badMsg = null;
+      try {
+        badMsg = await message.channel.messages.fetch(message.reference.messageId);
+      } catch (err) {
+        logger.error("!bad: failed to fetch referenced message:", err?.message);
+      }
+
+      if (!badMsg || badMsg.author.id !== client.user.id) {
+        const hint = await message.reply("Could not find the bot message you replied to. Make sure you reply directly to a bot message.");
+        setTimeout(() => hint.delete().catch(() => {}), 6000);
+        try { await message.delete(); } catch (_) {}
+        return;
+      }
+
+      // Find the user message that triggered the bad bot reply
+      // Look for the first non-bot message sent before the bad bot reply
+      let userQuestion = null;
+      try {
+        const fetched = await message.channel.messages.fetch({ limit: 50, before: badMsg.id });
+        const msgs = Array.from(fetched.values()); // newest first
+        for (const m of msgs) {
+          if (m.author.bot) continue;
+          const memberData = await message.guild.members.fetch(m.author.id).catch(() => null);
+          const isMemberStaff = STAFF_ROLE_ID && memberData?.roles?.cache?.has(STAFF_ROLE_ID);
+          if (!isMemberStaff) {
+            userQuestion = redactGiftCardCodes(m.content || "");
+            break;
+          }
+        }
+      } catch (err) {
+        logger.error("!bad: failed to fetch thread history:", err?.message);
+      }
+
+      // Extract keywords from the user question (same logic as !learn)
+      const stopWords = new Set(["the", "and", "for", "not", "you", "are", "this", "that", "with", "have", "was", "but", "from", "can", "will", "just", "all", "one", "out", "get", "how", "why", "what", "when", "where", "who", "its", "has", "had", "him", "she", "been", "being", "there", "their", "them", "than", "then", "into", "your", "my", "me", "we", "he", "it", "is", "do", "did", "does", "an", "a", "i", "or", "at", "by", "be", "to", "of", "in", "on", "up", "if", "so", "as", "no", "any"]);
+      const sourceText = userQuestion || correctAnswer;
+      const keywords = sourceText
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !stopWords.has(w))
+        .slice(0, 6);
+
+      const questionForFAQ = userQuestion || "Correction provided by staff";
+
+      try {
+        appendLearnedEntry(questionForFAQ, correctAnswer, keywords);
+      } catch (err) {
+        logger.error("!bad: failed to save entry:", err?.message);
+        await message.reply("Failed to save to knowledge base. Check bot logs.");
+        return;
+      }
+
+      analytics.trackLearnEvent(message.channelId);
+
+      // Delete the bad bot reply
+      try { await badMsg.delete(); } catch (_) {}
+
+      // Send the correct answer to the thread
+      await message.channel.send(correctAnswer);
+
+      // Delete the !bad command
+      try { await message.delete(); } catch (_) {}
+
+      // Brief staff confirmation
+      const confirm = await message.channel.send(
+        `✅ Bad reply removed and correct answer saved to knowledge base.\nKeywords: \`${keywords.length > 0 ? keywords.join(", ") : "none"}\``
+      );
+      setTimeout(() => confirm.delete().catch(() => {}), 5000);
+
+      logger.info("!bad: bad reply corrected — thread:", threadId, "| question:", questionForFAQ.slice(0, 80), "| keywords:", keywords.join(", "));
       return;
     }
 
@@ -459,7 +596,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const { answer, confidence } = aiResult;
+    const { answer, confidence, escalationReason } = aiResult;
 
     if (confidence >= 0.6) {
       // Check for duplicate before replying
@@ -475,6 +612,7 @@ client.on("messageCreate", async (message) => {
       // Auto-reply
       await message.reply(answer);
       recordBotMessage(message.channel.id, answer);
+      analytics.trackAIReply(message.channel.id, confidence);
       logger.info(
         "AI reply sent — thread:",
         message.channel.id,
@@ -494,6 +632,7 @@ client.on("messageCreate", async (message) => {
       }
       await message.reply(escalationMessage);
       recordBotMessage(message.channel.id, escalationMessage);
+      analytics.trackEscalation(message.channel.id, escalationReason || 'low_confidence');
       logger.info(
         "Escalated to human — thread:",
         message.channel.id,
@@ -519,6 +658,29 @@ client.on("messageCreate", async (message) => {
     } catch (replyErr) {
       logger.error("Failed to send escalation message:", replyErr?.message);
     }
+  }
+});
+
+client.on('threadUpdate', async (oldThread, newThread) => {
+  if (newThread.parentId !== TICKET_CHANNEL_ID) return;
+  // Only act when a ticket thread gets archived
+  if (!newThread.archived || oldThread.archived) return;
+
+  // Stop idle tracking for this thread
+  stopIdleTracking(newThread.id);
+
+  if (!ANALYTICS_CHANNEL_ID) return;
+
+  const data = analytics.flushTicketData(newThread.id);
+  if (!data) return; // thread opened before bot started, no data
+
+  try {
+    const analyticsChannel = await client.channels.fetch(ANALYTICS_CHANNEL_ID);
+    if (!analyticsChannel) return;
+    const card = analytics.buildSummaryCard(newThread.name, data);
+    await analyticsChannel.send(card);
+  } catch (err) {
+    logger.error(`Analytics card failed: ${err.message}`);
   }
 });
 

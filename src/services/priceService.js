@@ -9,6 +9,40 @@ const __dirname = dirname(__filename);
 let priceData = null;
 
 /**
+ * Normalizes a string for fuzzy matching:
+ * lowercase, strip dashes/underscores/dots, collapse spaces, trim.
+ */
+function normalize(str) {
+  return str
+    .toLowerCase()
+    .replace(/[-_.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Standard Levenshtein distance (DP). No external deps.
+ */
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+/**
  * Parses prices.py and returns array of { sku, price, name }.
  * Line format: "22011": 23.5,  # Cherax – License Key - Standard
  */
@@ -45,15 +79,33 @@ function loadPrices() {
 export function searchPrices(query) {
   if (!query || typeof query !== "string") return [];
   const products = loadPrices();
-  const words = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  const normalizedQuery = normalize(query);
+  const words = normalizedQuery.split(/\s+/).filter((w) => w.length > 2);
   if (words.length === 0) return [];
 
   const scored = products.map((product) => {
     const lowerName = product.name.toLowerCase();
+    const normalizedName = normalize(product.name);
+    const nameWords = normalizedName.split(/\s+/);
     let score = 0;
+
+    // Primary signal: exact word-match scoring (unchanged)
     for (const word of words) {
       if (lowerName.includes(word)) score += 2;
     }
+
+    // Fuzzy boost: Levenshtein on tokens longer than 3 chars
+    for (const token of words) {
+      if (token.length <= 3) continue;
+      for (const nameWord of nameWords) {
+        if (nameWord.length <= 3) continue;
+        if (levenshtein(token, nameWord) <= 2) {
+          score += 0.5;
+          break; // one boost per query token
+        }
+      }
+    }
+
     return { ...product, score };
   });
 
