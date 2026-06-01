@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
-import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS } from "./config.js";
+import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS, TRAINING_CHANNEL_ID, DOCS_EMBED_ON_BOOT } from "./config.js";
 import { hasAmazonGiftCard } from "./services/detection.js";
 import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
@@ -11,6 +11,11 @@ import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDe
 import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking, startIdleTracking, recordActivity, stopIdleTracking, getThreadsToWarn, getThreadsToClose, markWarningSent } from "./services/threadInactivity.js";
 import { searchPrices } from "./services/priceService.js";
 import { appendLearnedEntry } from "./services/knowledgeBase.js";
+import { extractCoreQuestion } from "./services/questionExtractor.js";
+import { enqueueMessage, flushBatch, flushThreadBatches } from "./services/messageBatcher.js";
+import { appendRule, deleteRule, listRules } from "./services/rulesService.js";
+import { ensureDocsIndex } from "./services/docsService.js";
+import { extractKeywords } from "./utils/keywords.js";
 import * as analytics from "./services/analyticsService.js";
 import * as logger from "./utils/logger.js";
 
@@ -70,8 +75,96 @@ function extractTicketBotInquiry(content, embeds = []) {
   return null;
 }
 
+/**
+ * Send a reply to a user message, falling back to channel.send() if the original message
+ * was deleted during the batch debounce window (Discord error 10008: Unknown Message).
+ */
+async function safeReply(message, content) {
+  try {
+    return await message.reply(content);
+  } catch (err) {
+    if (err?.code === 10008 || /unknown message/i.test(err?.message || "")) {
+      logger.info("safeReply: original message gone — falling back to channel.send()");
+      return await message.channel.send(content);
+    }
+    throw err;
+  }
+}
+
+/**
+ * AI Support processor — called by the message batcher after the debounce window elapses.
+ *
+ * Receives `content` (possibly combined from multiple rapid-fire user messages) and
+ * `message` (the LAST message in the batch, used for .reply() and channel/guild context).
+ * Mirrors the original inline AI Support block: rate limit → redact → handleAISupport →
+ * reply or escalate.
+ */
+async function processAISupport(content, message) {
+  if (!OPENAI_API_KEY) return;
+  if (!content) return;
+
+  try {
+    if (!checkRateLimit(message.channel.id)) {
+      logger.info("Rate limit exceeded for thread:", message.channel.id);
+      return;
+    }
+
+    const safeContent = redactGiftCardCodes(content);
+    const aiResult = await handleAISupport(safeContent, message.channel);
+
+    if (!aiResult) {
+      logger.error("AI service returned null for thread:", message.channel.id);
+      return;
+    }
+
+    const { answer, confidence, escalationReason } = aiResult;
+
+    if (confidence >= 0.6) {
+      if (await shouldSkipDuplicateReply(message.channel, answer)) {
+        logger.info("Skipping duplicate reply — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
+        return;
+      }
+      await safeReply(message, answer);
+      recordBotMessage(message.channel.id, answer);
+      analytics.trackAIReply(message.channel.id, confidence);
+      logger.info("AI reply sent — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
+    } else {
+      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
+      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
+        logger.info("Skipping duplicate escalation — thread:", message.channel.id);
+        return;
+      }
+      await safeReply(message, escalationMessage);
+      recordBotMessage(message.channel.id, escalationMessage);
+      analytics.trackEscalation(message.channel.id, escalationReason || 'low_confidence');
+      logger.info("Escalated to human — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
+    }
+  } catch (err) {
+    logger.error("AI support error:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
+    try {
+      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
+      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
+        logger.info("Skipping duplicate fallback escalation — thread:", message.channel.id);
+        return;
+      }
+      await safeReply(message, escalationMessage);
+      recordBotMessage(message.channel.id, escalationMessage);
+    } catch (replyErr) {
+      logger.error("Failed to send escalation message:", replyErr?.message);
+    }
+  }
+}
+
 client.on("ready", async () => {
   logger.info("Bot prêt, guilds:", client.guilds.cache.size);
+
+  // Optionally pre-warm the docs embedding index on boot (otherwise lazy on first query)
+  if (DOCS_EMBED_ON_BOOT) {
+    ensureDocsIndex().catch((err) => {
+      logger.error("[ready] ensureDocsIndex failed at boot:", err?.message);
+    });
+  }
+
   const payment = await client.channels.fetch(PAYMENT_CHANNEL_ID).catch(() => null);
   const tickets = await client.channels.fetch(TICKET_CHANNEL_ID).catch(() => null);
   logger.info(
@@ -313,6 +406,80 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.author.bot) return;
+
+  // Training-channel commands for staff: !rule, !rules, !rule-del
+  // These run BEFORE the ticket-thread gate because the training channel is a normal channel,
+  // not a ticket thread.
+  if (
+    TRAINING_CHANNEL_ID &&
+    message.channel.id === TRAINING_CHANNEL_ID &&
+    STAFF_ROLE_ID &&
+    message.member?.roles?.cache?.has(STAFF_ROLE_ID) &&
+    message.content
+  ) {
+    const text = message.content.trim();
+    const lower = text.toLowerCase();
+
+    // !rule <instruction>
+    // The trailing space already excludes "!rule-del" and "!rules" (no space after "rule").
+    if (lower.startsWith("!rule ")) {
+      const ruleText = text.slice("!rule".length).trim();
+      if (!ruleText) {
+        const hint = await message.reply("Usage: `!rule <instruction>` — e.g. `!rule Always reply in Spanish when the user writes in Spanish.`");
+        setTimeout(() => hint.delete().catch(() => {}), 8000);
+        return;
+      }
+      try {
+        const entry = appendRule(ruleText, message.author.id);
+        try { await message.delete(); } catch (_) {}
+        const confirm = await message.channel.send(`✅ Rule #${entry.id} saved: ${entry.rule}`);
+        setTimeout(() => confirm.delete().catch(() => {}), 8000);
+        logger.info("[!rule] Added rule #", entry.id, "by", message.author.tag);
+      } catch (err) {
+        logger.error("[!rule] Failed to save rule:", err?.message);
+        await message.reply("Failed to save rule. Check bot logs.");
+      }
+      return;
+    }
+
+    // !rules — list all rules
+    if (lower === "!rules") {
+      try { await message.delete(); } catch (_) {}
+      const rules = listRules();
+      if (rules.length === 0) {
+        const reply = await message.channel.send("📋 No staff rules defined yet. Use `!rule <instruction>` to add one.");
+        setTimeout(() => reply.delete().catch(() => {}), 30000);
+        return;
+      }
+      const lines = rules.map((r) => `**#${r.id}** ${r.rule}`).join("\n");
+      const reply = await message.channel.send(`📋 **Staff rules (${rules.length}):**\n${lines}`);
+      setTimeout(() => reply.delete().catch(() => {}), 30000);
+      return;
+    }
+
+    // !rule-del <id>  (require exact token or trailing space to avoid matching "!rule-delete-everything")
+    if (lower === "!rule-del" || lower.startsWith("!rule-del ")) {
+      const idStr = text.slice("!rule-del".length).trim();
+      const id = Number(idStr);
+      if (!Number.isFinite(id) || id <= 0) {
+        const hint = await message.reply("Usage: `!rule-del <id>` — get IDs with `!rules`.");
+        setTimeout(() => hint.delete().catch(() => {}), 8000);
+        return;
+      }
+      try {
+        const removed = deleteRule(id);
+        try { await message.delete(); } catch (_) {}
+        const reply = await message.channel.send(removed ? `✅ Rule #${id} removed.` : `⚠️ Rule #${id} not found.`);
+        setTimeout(() => reply.delete().catch(() => {}), 8000);
+        if (removed) logger.info("[!rule-del] Removed rule #", id, "by", message.author.tag);
+      } catch (err) {
+        logger.error("[!rule-del] Failed to delete:", err?.message);
+        await message.reply("Failed to delete rule. Check bot logs.");
+      }
+      return;
+    }
+  }
+
   if (!message.channel.isThread()) return;
   if (message.channel.parentId !== TICKET_CHANNEL_ID) return;
 
@@ -358,14 +525,7 @@ client.on("messageCreate", async (message) => {
         return;
       }
 
-      // Extract keywords: words > 2 chars, no stop words, max 6
-      const stopWords = new Set(["the", "and", "for", "not", "you", "are", "this", "that", "with", "have", "was", "but", "from", "can", "will", "just", "all", "one", "out", "get", "how", "why", "what", "when", "where", "who", "its", "has", "had", "him", "she", "been", "being", "there", "their", "them", "than", "then", "into", "your", "my", "me", "we", "he", "it", "is", "do", "did", "does", "an", "a", "i", "or", "at", "by", "be", "to", "of", "in", "on", "up", "if", "so", "as", "no", "any"]);
-      const keywords = userQuestion
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length > 2 && !stopWords.has(w))
-        .slice(0, 6);
+      const keywords = extractKeywords(userQuestion);
 
       try {
         appendLearnedEntry(userQuestion, learnedAnswer, keywords);
@@ -446,17 +606,20 @@ client.on("messageCreate", async (message) => {
         logger.error("!bad: failed to fetch thread history:", err?.message);
       }
 
-      // Extract keywords from the user question (same logic as !learn)
-      const stopWords = new Set(["the", "and", "for", "not", "you", "are", "this", "that", "with", "have", "was", "but", "from", "can", "will", "just", "all", "one", "out", "get", "how", "why", "what", "when", "where", "who", "its", "has", "had", "him", "she", "been", "being", "there", "their", "them", "than", "then", "into", "your", "my", "me", "we", "he", "it", "is", "do", "did", "does", "an", "a", "i", "or", "at", "by", "be", "to", "of", "in", "on", "up", "if", "so", "as", "no", "any"]);
-      const sourceText = userQuestion || correctAnswer;
-      const keywords = sourceText
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length > 2 && !stopWords.has(w))
-        .slice(0, 6);
+      // LLM-extract the core question so mentions/multi-topic rambling don't pollute the FAQ.
+      // Falls back to the raw message on any failure so !bad never blocks on OpenAI.
+      let cleanedQuestion = userQuestion;
+      if (userQuestion) {
+        try {
+          const extracted = await extractCoreQuestion(userQuestion);
+          if (extracted) cleanedQuestion = extracted;
+        } catch (err) {
+          logger.error("!bad: extractCoreQuestion failed:", err?.message);
+        }
+      }
 
-      const questionForFAQ = userQuestion || "Correction provided by staff";
+      const keywords = extractKeywords(cleanedQuestion || correctAnswer);
+      const questionForFAQ = cleanedQuestion || "Correction provided by staff";
 
       try {
         appendLearnedEntry(questionForFAQ, correctAnswer, keywords);
@@ -527,12 +690,14 @@ client.on("messageCreate", async (message) => {
   // Detect staff activity: if staff replies, pause bot automatically
   if (isStaff) {
     updateStaffActivity(threadId);
+    flushThreadBatches(threadId); // staff is taking over — drop any pending batched replies
     logger.info("Staff activity detected — thread paused:", threadId, "staff:", message.author.tag);
     return; // Staff replied → bot doesn't process this message
   }
 
   // Check if thread is paused (bot won't reply)
   if (isThreadPaused(threadId)) {
+    flushBatch(threadId, message.author.id);
     return; // Thread paused → bot skips
   }
 
@@ -569,95 +734,24 @@ client.on("messageCreate", async (message) => {
     } catch (err) {
       logger.error("Erreur lors de la notification paiement:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
     }
+    // Drop any pending text batch for this user — the payment notification IS the response.
+    flushBatch(threadId, message.author.id);
     return;
   }
 
-  // Priority 2: AI Support (new behavior)
-  // Skip if OpenAI API key is not configured
+  // Priority 2: AI Support — debounced via messageBatcher.
+  // Rapid-fire user messages from the SAME user in the SAME thread are batched and processed
+  // once after BATCH_WAIT_MS of silence (or BATCH_MAX_WAIT_MS hard ceiling).
   if (!OPENAI_API_KEY) {
     return;
   }
 
   try {
-    // Check rate limit
-    if (!checkRateLimit(message.channel.id)) {
-      logger.info("Rate limit exceeded for thread:", message.channel.id);
-      return;
-    }
-
-    // Redact sensitive codes before processing
-    const safeContent = redactGiftCardCodes(content);
-
-    // Get AI response (pass channel for conversation history)
-    const aiResult = await handleAISupport(safeContent, message.channel);
-
-    if (!aiResult) {
-      logger.error("AI service returned null for thread:", message.channel.id);
-      return;
-    }
-
-    const { answer, confidence, escalationReason } = aiResult;
-
-    if (confidence >= 0.6) {
-      // Check for duplicate before replying
-      if (await shouldSkipDuplicateReply(message.channel, answer)) {
-        logger.info(
-          "Skipping duplicate reply — thread:",
-          message.channel.id,
-          "confidence:",
-          confidence.toFixed(2)
-        );
-        return;
-      }
-      // Auto-reply
-      await message.reply(answer);
-      recordBotMessage(message.channel.id, answer);
-      analytics.trackAIReply(message.channel.id, confidence);
-      logger.info(
-        "AI reply sent — thread:",
-        message.channel.id,
-        "confidence:",
-        confidence.toFixed(2)
-      );
-    } else {
-      // Escalate to human
-      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
-      // Check for duplicate before replying
-      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
-        logger.info(
-          "Skipping duplicate escalation — thread:",
-          message.channel.id
-        );
-        return;
-      }
-      await message.reply(escalationMessage);
-      recordBotMessage(message.channel.id, escalationMessage);
-      analytics.trackEscalation(message.channel.id, escalationReason || 'low_confidence');
-      logger.info(
-        "Escalated to human — thread:",
-        message.channel.id,
-        "confidence:",
-        confidence.toFixed(2)
-      );
-    }
+    enqueueMessage(message, processAISupport);
   } catch (err) {
-    logger.error("Erreur lors du support IA:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
-    // Fallback: escalate to human on error
-    try {
-      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
-      // Check for duplicate before replying
-      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
-        logger.info(
-          "Skipping duplicate fallback escalation — thread:",
-          message.channel.id
-        );
-        return;
-      }
-      await message.reply(escalationMessage);
-      recordBotMessage(message.channel.id, escalationMessage);
-    } catch (replyErr) {
-      logger.error("Failed to send escalation message:", replyErr?.message);
-    }
+    logger.error("messageBatcher.enqueueMessage threw — falling back to direct processing:", err?.message);
+    // Defensive fallback: if the batcher itself fails, process inline so the user still gets a reply.
+    await processAISupport(content, message);
   }
 });
 

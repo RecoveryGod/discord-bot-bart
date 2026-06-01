@@ -25,6 +25,10 @@ export const CLIENT_ID = process.env.CLIENT_ID?.trim() ?? "";
 export const GUILD_ID = process.env.GUILD_ID?.trim() ?? "";
 export const ANALYTICS_CHANNEL_ID = process.env.ANALYTICS_CHANNEL_ID?.trim() || null;
 export const AUTO_CLOSE_HOURS = process.env.AUTO_CLOSE_HOURS ? parseFloat(process.env.AUTO_CLOSE_HOURS) : 48;
+export const TRAINING_CHANNEL_ID = process.env.TRAINING_CHANNEL_ID?.trim() ?? "";
+export const DOCS_EMBED_ON_BOOT = process.env.DOCS_EMBED_ON_BOOT === "true";
+export const BATCH_WAIT_MS = parseInt(process.env.BATCH_WAIT_MS ?? "3000", 10);
+export const BATCH_MAX_WAIT_MS = parseInt(process.env.BATCH_MAX_WAIT_MS ?? "15000", 10);
 
 export function loadConfig() {
   validate();

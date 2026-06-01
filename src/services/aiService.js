@@ -1,6 +1,8 @@
 import { OPENAI_API_KEY } from "../config.js";
 import { searchFAQ, formatFAQContext, FAQ_MIN_SCORE } from "./knowledgeBase.js";
 import { searchPrices, formatPriceContext } from "./priceService.js";
+import { formatRulesForPrompt } from "./rulesService.js";
+import { searchDocs, formatDocsContext } from "./docsService.js";
 import { redactGiftCardCodes } from "../utils/redact.js";
 import * as logger from "../utils/logger.js";
 
@@ -161,7 +163,7 @@ async function fetchThreadHistory(channel) {
  * Calls OpenAI API to generate a support response.
  * Returns { answer: string, confidence: number } or null on error.
  */
-export async function generateAIResponse(userMessage, faqContext, history = [], isRetry = false, priceContext = null) {
+export async function generateAIResponse(userMessage, faqContext, { history = [], isRetry = false, priceContext = null, docsContext = null } = {}) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY not configured");
   }
@@ -174,16 +176,27 @@ export async function generateAIResponse(userMessage, faqContext, history = [], 
     : "";
 
   const priceSection = priceContext ? `\n\n${priceContext}` : "";
+  const docsSection = docsContext ? `\n\nDocumentation (supporting context, lower priority than FAQ):\n${docsContext}` : "";
+
+  // Build system content dynamically: base prompt + staff-defined rules + JSON-format reminder.
+  // Rules go AFTER the base prompt but the JSON reminder is re-stated LAST so rules cannot
+  // override the response-format contract.
+  const rulesBlock = formatRulesForPrompt();
+  const rulesSection = rulesBlock
+    ? `\n-----------------------------------------\nSTAFF-DEFINED RULES (override defaults)\n-----------------------------------------\n${rulesBlock}\n`
+    : "";
+  const jsonReminder = `\nREMINDER: Respond with ONLY the JSON object {"answer": "...", "confidence": 0.0}. No markdown, no code fences, no prose outside JSON.`;
+  const systemContent = SYSTEM_PROMPT + rulesSection + jsonReminder;
 
   const messages = [
     {
       role: "system",
-      content: SYSTEM_PROMPT,
+      content: systemContent,
     },
     ...history,
     {
       role: "user",
-      content: `Knowledge Base:\n${faqContext}${priceSection}\n\nCustomer Question: ${safeMessage}${retryInstruction}`,
+      content: `Knowledge Base (authoritative):\n${faqContext}${priceSection}${docsSection}\n\nCustomer Question: ${safeMessage}${retryInstruction}`,
     },
   ];
 
@@ -268,19 +281,29 @@ export async function handleAISupport(userMessage, channel) {
   // Redact sensitive data
   const safeMessage = redactGiftCardCodes(userMessage);
 
-  // Search knowledge base and price list in parallel
-  const { entries: relevantFAQ, bestScore } = searchFAQ(safeMessage);
-  const matchedPrices = searchPrices(safeMessage);
+  // Search knowledge base, prices, and docs in parallel.
+  // searchDocs is async (embedding API); FAQ/prices are sync but Promise.all is fine.
+  const [{ entries: relevantFAQ, bestScore }, matchedPrices, docs] = await Promise.all([
+    Promise.resolve(searchFAQ(safeMessage)),
+    Promise.resolve(searchPrices(safeMessage)),
+    searchDocs(safeMessage).catch((err) => {
+      logger.error("searchDocs failed:", err?.message);
+      return [];
+    }),
+  ]);
   const priceContext = formatPriceContext(matchedPrices);
+  const docsContext = formatDocsContext(docs);
 
   if (priceContext) {
     logger.info("Price context found —", matchedPrices.length, "product(s) matched");
   }
+  if (docsContext) {
+    logger.info("Docs context found —", docs.length, "chunk(s) matched");
+  }
 
-  // Only skip the AI call if there is truly zero match (score 0 and no price hit).
-  // Weak matches (score > 0) still go to the AI — it decides whether to answer or escalate.
-  if (bestScore === 0 && !priceContext) {
-    logger.info("Zero FAQ/price match — escalating directly");
+  // Only skip the AI call if there is truly zero match across FAQ, prices, AND docs.
+  if (bestScore === 0 && !priceContext && !docsContext) {
+    logger.info("Zero FAQ/price/docs match — escalating directly");
     return {
       answer: "A human support agent will assist you shortly.",
       confidence: 0,
@@ -294,12 +317,12 @@ export async function handleAISupport(userMessage, channel) {
   const history = channel ? await fetchThreadHistory(channel) : [];
 
   // First attempt
-  const result = await generateAIResponse(safeMessage, faqContext, history, false, priceContext);
+  const result = await generateAIResponse(safeMessage, faqContext, { history, isRetry: false, priceContext, docsContext });
 
   // If confidence is too low, retry once before escalating
   if (result.confidence < 0.6) {
     logger.info("Low confidence on first attempt:", result.confidence.toFixed(2), "— retrying...");
-    const retry = await generateAIResponse(safeMessage, faqContext, history, true, priceContext);
+    const retry = await generateAIResponse(safeMessage, faqContext, { history, isRetry: true, priceContext, docsContext });
     logger.info("Retry confidence:", retry.confidence.toFixed(2));
     return retry;
   }

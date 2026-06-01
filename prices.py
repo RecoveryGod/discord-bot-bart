@@ -14,10 +14,10 @@ prices = {
     "3640": 11.8,  # Stand – GTA - Basic to Regular Upgrade
     "3650": 24.5,  # Stand – GTA - Regular to Ultimate Upgrade
     "3660": 36.8,  # Stand – GTA - Basic to Ultimate Upgrade
-    "5310": 2.99,  # MemeSense - CS2 - 14 Days
-    "5320": 4.3,  # MemeSense - CS2 - 31 Days
-    "5330": 10.2,  # MemeSense - CS2 - 90 Days
-    "5340": 17.0,  # MemeSense - CS2 - 180 Days
+    "5310": 3.4,  # MemeSense - CS2 - 14 Days
+    "5320": 5.1,  # MemeSense - CS2 - 31 Days
+    "5330": 12.2,  # MemeSense - CS2 - 90 Days
+    "5340": 20.4,  # MemeSense - CS2 - 180 Days
     "5210": 16.15,  # Atlas – GTA - Enhanced
     "5220": 20.4,  # Atlas – GTA - VIP 30 Days Upgrade
     "4310": 25.8,  # Lexis - GTA - 1 Month
