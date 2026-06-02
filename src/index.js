@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
-import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS, TRAINING_CHANNEL_ID, DOCS_EMBED_ON_BOOT } from "./config.js";
+import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS, TRAINING_CHANNEL_ID, DOCS_EMBED_ON_BOOT, BOT_VERSION } from "./config.js";
 import { hasAmazonGiftCard } from "./services/detection.js";
 import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
@@ -156,7 +156,7 @@ async function processAISupport(content, message) {
 }
 
 client.on("ready", async () => {
-  logger.info("Bot prêt, guilds:", client.guilds.cache.size);
+  logger.info(`Bot v${BOT_VERSION} prêt, guilds:`, client.guilds.cache.size);
 
   // Optionally pre-warm the docs embedding index on boot (otherwise lazy on first query)
   if (DOCS_EMBED_ON_BOOT) {
@@ -493,6 +493,12 @@ client.on("messageCreate", async (message) => {
 
   // Handle staff commands: !pause, !mute, !resume (accept both "!bot mute" and "!bot-mute")
   if (isStaff && content) {
+    // !version — report running bot version
+    if (content.trim().toLowerCase() === "!version") {
+      await message.reply(`🤖 Bot version: **v${BOT_VERSION}**`);
+      return;
+    }
+
     // !learn command: staff teaches the bot a new Q&A answer
     if (content.trim().toLowerCase().startsWith("!learn ")) {
       const learnedAnswer = content.trim().slice("!learn ".length).trim();
