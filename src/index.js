@@ -191,6 +191,10 @@ client.on("ready", async () => {
             },
           ],
         },
+        {
+          name: "version",
+          description: "Show the current running version of the bot",
+        },
       ];
       const route = GUILD_ID
         ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
@@ -300,7 +304,14 @@ client.on("threadCreate", async (thread) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand() || interaction.commandName !== "price") return;
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "version") {
+    await interaction.reply({ content: `🤖 Bot version: **v${BOT_VERSION}**`, ephemeral: true });
+    return;
+  }
+
+  if (interaction.commandName !== "price") return;
 
   const query = interaction.options.getString("product");
   logger.info("/price command used by:", interaction.user.tag, "| query:", query);
