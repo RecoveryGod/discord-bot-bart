@@ -1,9 +1,14 @@
-# Fixed selling price per unit (€) – auto-synced from WooCommerce export (Published=1 only).
-# Sale price preferred over regular price. Discontinued products (Published=-1) excluded.
-# Last updated: 2026-06-23
+# Fixed selling price per unit (€) – auto-synced from WooCommerce API (status=publish only).
+# Sale price preferred over regular price. Non-published products excluded.
+# Last updated: 2026-07-17
 prices = {
     "10010": 20.0,  # SpectraX - GTA Lexis Lua - 1 Month
     "10020": 45.0,  # SpectraX - GTA Lexis Lua - Lifetime
+    "10110": 6.99,  # Kernaim - SAND: Raiders of Sophie - 1 Day
+    "10120": 19.99,  # Kernaim - SAND: Raiders of Sophie - 1 Week
+    "10130": 39.99,  # Kernaim - SAND: Raiders of Sophie - 1 Month
+    "10140": 79.99,  # Kernaim - SAND: Raiders of Sophie - 3 Months
+    "10150": 199.99,  # Kernaim - SAND: Raiders of Sophie - Lifetime
     "2110": 15.0,  # X-Force – GTA - Essential
     "2130": 25.0,  # X-Force – GTA - Ace 30 days
     "22011": 23.5,  # Cherax – License Key - Standard
@@ -13,12 +18,12 @@ prices = {
     "3320": 18.7,  # Midnight - GTA - Lifetime FSL
     "3410": 16.25,  # Fortitude - RDR2 - 30 days
     "3420": 52.4,  # Fortitude - RDR2 - Lifetime
-    "3610": 11.8,  # Stand – GTA - Basic
-    "3620": 24.45,  # Stand – GTA - Regular
+    "3610": 12.0,  # Stand – GTA - Basic
+    "3620": 24.5,  # Stand – GTA - Regular
     "3630": 48.0,  # Stand – GTA - Ultimate
-    "3640": 11.8,  # Stand – GTA - Basic to Regular Upgrade
+    "3640": 12.0,  # Stand – GTA - Basic to Regular Upgrade
     "3650": 24.5,  # Stand – GTA - Regular to Ultimate Upgrade
-    "3660": 36.8,  # Stand – GTA - Basic to Ultimate Upgrade
+    "3660": 37.0,  # Stand – GTA - Basic to Ultimate Upgrade
     "3910": 7.3,  # Predator Deadlock - 1 Week
     "3920": 15.6,  # Predator Deadlock - 1 Month
     "3930": 32.0,  # Predator Deadlock - 3 Months
@@ -42,9 +47,12 @@ prices = {
     "4630": 24.3,  # Lexis - Apex Legends - 1 Month
     "4640": 44.3,  # Lexis - Apex Legends - 3 Months
     "4650": 140.0,  # Lexis - Apex Legends - Lifetime
-    "4710": 5.8,  # 0xCheats – GTA Legacy & Enhance - 7 days Legacy
-    "4720": 11.6,  # 0xCheats – GTA Legacy & Enhance - 30 days Legacy & Enhanced
-    "4730": 23.2,  # 0xCheats – GTA Legacy & Enhance - 90 days Legacy & Enhanced
+    "4710": 12.0,  # 0xCheats – GTA Legacy & Enhance - Enhanced, 30 days
+    "4720": 6.0,  # 0xCheats – GTA Legacy & Enhance - Legacy, 7 days
+    "4730": 6.0,  # 0xCheats – GTA Legacy & Enhance - Enhanced, 7 days
+    "4740": 24.0,  # 0xCheats – GTA Legacy & Enhance - Enhanced, 90 days
+    "4750": 12.0,  # 0xCheats – GTA Legacy & Enhance - Legacy, 30 days
+    "4760": 24.0,  # 0xCheats – GTA Legacy & Enhance - Legacy, 90 days
     "4810": 2.75,  # Predator Marvel Rivals - 1 Day
     "4820": 7.3,  # Predator Marvel Rivals - 1 Week
     "4830": 15.6,  # Predator Marvel Rivals - 1 Month
@@ -62,10 +70,10 @@ prices = {
     "5230": 5.5,  # Atlas – GTA - VIP 7 Days
     "5240": 35.0,  # Atlas – GTA - VIP 90 Days
     "5250": 52.5,  # Atlas – GTA - VIP Lifetime
-    "5310": 3.4,  # MemeSense - CS2 - 14 Days
-    "5320": 5.1,  # MemeSense - CS2 - 31 Days
-    "5330": 12.2,  # MemeSense - CS2 - 90 Days
-    "5340": 20.4,  # MemeSense - CS2 - 180 Days
+    "5310": 4.0,  # MemeSense - CS2 - 14 Days
+    "5320": 5.8,  # MemeSense - CS2 - 31 Days
+    "5330": 12.9,  # MemeSense - CS2 - 90 Days
+    "5340": 21.5,  # MemeSense - CS2 - 180 Days
     "5410": 1.29,  # Nixware - CS2 - 1 Day
     "5420": 3.0,  # Nixware - CS2 - 14 Days
     "5430": 4.75,  # Nixware - CS2 - 30 Days
@@ -125,13 +133,14 @@ prices = {
     "7301": 15.0,  # Jupiter – GTA - 7 Days
     "7302": 25.0,  # Jupiter – GTA - 30 Days
     "7303": 50.0,  # Jupiter – GTA - 90 Days
+    "7304": 120.0,  # Jupiter – GTA - Lifetime
     "7310": 1.0,  # Jupiter – CS2 - 1 Day
     "7320": 2.0,  # Jupiter – CS2 - 1 Week
     "7330": 5.0,  # Jupiter – CS2 - 1 Month
     "7340": 20.0,  # Jupiter – CS2 - Lifetime
     "7410": 10.99,  # Susano – FiveM - 1 Week
     "7420": 16.99,  # Susano – FiveM - 1 Month
-    "7430": 35.0,  # Susano – FiveM - 3 Month
+    "7430": 23.99,  # Susano – FiveM - 3 Month
     "7440": 29.99,  # Susano – FiveM - Lifetime
     "7510": 9.0,  # Scooby – RDR2 - Lifetime
     "7610": 3.99,  # TZ Project – FiveM PvP Tool - 1 Day
@@ -170,6 +179,7 @@ prices = {
     "8810": 5.95,  # Nexoria – GTA - 1 Week
     "8820": 10.15,  # Nexoria – GTA - 1 Month
     "8830": 22.99,  # Nexoria – GTA - Lifetime
+    "8840": 13.6,  # Nexoria – GTA - 1 Month BE
     "8910": 5.95,  # Yari – GTA - 7 Days
     "8920": 21.2,  # Yari – GTA - 30 Days
     "8930": 38.2,  # Yari – GTA - 60 Days
