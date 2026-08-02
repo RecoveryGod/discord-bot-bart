@@ -31,12 +31,12 @@
     },
     {
       "question": "Do you accept Amazon gift card payments?",
-      "answer": "Yes, French Amazon gift card payments are accepted. Please follow these instructions and wait for manual verification by staff.\n\nYou can buy one of the following gift cards from these sites, make sure its a **French** Amazon gift card:\n\n- [Eneba](https://www.eneba.com/fr/amazon-amazon-gift-card-10-eur-key-france)\n- [GameSeal](https://gameseal.com/amazon-gift-card-50-eur-key-france)\n- [G2A](https://www.g2a.com/fr/search?query=France%20amazon)\n- [Recharge.fr](https://www.recharge.fr/carte-cadeau-amazon)\n- [Dundle](https://dundle.com/fr/amazon/)\n\nOnce you have the gift card, you can send it here, and I'll assist you further. Don't forget to tag @lifeisamazing_.",
+      "answer": "You can pay directly on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["amazon", "gift card", "amazon payment", "card payment"]
     },
     {
       "question": "Do you accept Paypal payments?",
-      "answer": "We don't accept PayPal payments directly. However, you can purchase a French Amazon gift card using PayPal or other payment methods. Please follow these instructions and wait for manual verification by staff.\n\nYou can buy one of the following gift cards from these sites, make sure its a **French** Amazon gift card:\n\n- [Eneba](https://www.eneba.com/fr/amazon-amazon-gift-card-10-eur-key-france)\n- [GameSeal](https://gameseal.com/amazon-gift-card-50-eur-key-france)\n- [G2A](https://www.g2a.com/fr/search?query=France%20amazon)\n- [Recharge.fr](https://www.recharge.fr/carte-cadeau-amazon)\n- [Dundle](https://dundle.com/fr/amazon/)\n\nOnce you have the gift card, you can send it here, and I'll assist you further. Don't forget to tag @lifeisamazing_.",
+      "answer": "We don't accept PayPal payments directly. You can pay on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": [ "PayPal", "venmo", "eneba", "g2a"]
     },
     {
@@ -46,12 +46,12 @@
     },
     {
       "question": "What payment method do have?",
-      "answer": "Please let us know which payment method you prefer. We currently support credit/debit cards and cryptocurrency directly on our website: https://recoverygods.xyz. Alternatively, you can purchase a French Amazon gift card (from Eneba, G2A, GameSeal, Recharge.fr or Dundle) and send it in this ticket for manual verification.",
+      "answer": "We currently support credit/debit cards and cryptocurrency directly on our website: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["payment method", "how to pay", "pay with", "available payment"]
     },
     {
       "question": "Can I buy with a Google Play gift card?",
-      "answer": "We do not accept Google Play gift cards directly. You can purchase securely on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz. Alternatively, you may purchase a French Amazon gift card (from Eneba, G2A, GameSeal, Recharge.fr or Dundle) and send the code in this ticket for manual verification.",
+      "answer": "We do not accept Google Play gift cards. You can purchase securely on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["google play gift card", "google gift card", "google play payment"]
     },
     {
@@ -61,7 +61,7 @@
     },
     {
       "question": "Do you accept PayPal?",
-      "answer": "We do not accept PayPal directly. However, you can purchase a French Amazon gift card using PayPal and send it here for manual verification.",
+      "answer": "We do not accept PayPal directly. You can pay on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["paypal", "venmo", "alternative payment"]
     },
     {

@@ -21,6 +21,8 @@ import * as logger from "./utils/logger.js";
 
 loadConfig();
 
+const ESCALATION_MESSAGE = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -129,26 +131,24 @@ async function processAISupport(content, message) {
       analytics.trackAIReply(message.channel.id, confidence);
       logger.info("AI reply sent — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
     } else {
-      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
-      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
+      if (await shouldSkipDuplicateReply(message.channel, ESCALATION_MESSAGE)) {
         logger.info("Skipping duplicate escalation — thread:", message.channel.id);
         return;
       }
-      await safeReply(message, escalationMessage);
-      recordBotMessage(message.channel.id, escalationMessage);
+      await safeReply(message, ESCALATION_MESSAGE);
+      recordBotMessage(message.channel.id, ESCALATION_MESSAGE);
       analytics.trackEscalation(message.channel.id, escalationReason || 'low_confidence');
       logger.info("Escalated to human — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
     }
   } catch (err) {
     logger.error("AI support error:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
     try {
-      const escalationMessage = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
-      if (await shouldSkipDuplicateReply(message.channel, escalationMessage)) {
+      if (await shouldSkipDuplicateReply(message.channel, ESCALATION_MESSAGE)) {
         logger.info("Skipping duplicate fallback escalation — thread:", message.channel.id);
         return;
       }
-      await safeReply(message, escalationMessage);
-      recordBotMessage(message.channel.id, escalationMessage);
+      await safeReply(message, ESCALATION_MESSAGE);
+      recordBotMessage(message.channel.id, ESCALATION_MESSAGE);
     } catch (replyErr) {
       logger.error("Failed to send escalation message:", replyErr?.message);
     }
@@ -393,7 +393,7 @@ client.on("messageCreate", async (message) => {
 
       const reply = confidence >= 0.6
         ? answer
-        : `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
+        : ESCALATION_MESSAGE;
 
       if (await shouldSkipDuplicateReply(message.channel, reply)) {
         logger.info("[TicketBot] Duplicate reply skipped — thread:", threadId);
