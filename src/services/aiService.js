@@ -139,7 +139,12 @@ const HISTORY_LIMIT = 10;
  * Fetches the last N messages from a thread as conversation history.
  * Excludes the current message (last item, already in userMessage).
  * Returns array of { role: "user"|"assistant", content: string }.
+ *
+ * NOTE: unused while the bot runs without the Message Content privileged intent —
+ * fetched messages come back with empty content. Kept for the case where the intent
+ * is re-enabled; conversationLog.js supplies history in the meantime.
  */
+// eslint-disable-next-line no-unused-vars
 async function fetchThreadHistory(channel) {
   try {
     const fetched = await channel.messages.fetch({ limit: HISTORY_LIMIT });
@@ -277,7 +282,7 @@ export async function generateAIResponse(userMessage, faqContext, { history = []
  * Main function to handle AI support request.
  * Returns { answer: string, confidence: number } or null if should skip.
  */
-export async function handleAISupport(userMessage, channel) {
+export async function handleAISupport(userMessage, { history = [] } = {}) {
   // Redact sensitive data
   const safeMessage = redactGiftCardCodes(userMessage);
 
@@ -312,9 +317,6 @@ export async function handleAISupport(userMessage, channel) {
   }
 
   const faqContext = formatFAQContext(relevantFAQ);
-
-  // Fetch conversation history for context (fails gracefully to empty array)
-  const history = channel ? await fetchThreadHistory(channel) : [];
 
   // First attempt
   const result = await generateAIResponse(safeMessage, faqContext, { history, isRetry: false, priceContext, docsContext });

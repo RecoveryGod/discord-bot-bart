@@ -1,7 +1,18 @@
 import "dotenv/config";
-import { Client, GatewayIntentBits, REST, Routes } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  REST,
+  Routes,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  MessageFlags,
+} from "discord.js";
 import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS, TRAINING_CHANNEL_ID, DOCS_EMBED_ON_BOOT, BOT_VERSION } from "./config.js";
-import { hasAmazonGiftCard } from "./services/detection.js";
 import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
 import { checkRateLimit } from "./services/rateLimiter.js";
@@ -12,7 +23,14 @@ import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTr
 import { searchPrices } from "./services/priceService.js";
 import { appendLearnedEntry } from "./services/knowledgeBase.js";
 import { extractCoreQuestion } from "./services/questionExtractor.js";
-import { enqueueMessage, flushBatch, flushThreadBatches } from "./services/messageBatcher.js";
+import {
+  recordUserMessage,
+  recordBotAnswer,
+  getHistory,
+  getLastUserQuestion,
+  getLastAnswerId,
+  clearThread,
+} from "./services/conversationLog.js";
 import { appendRule, deleteRule, listRules } from "./services/rulesService.js";
 import { ensureDocsIndex } from "./services/docsService.js";
 import { extractKeywords } from "./utils/keywords.js";
@@ -21,13 +39,19 @@ import * as logger from "./utils/logger.js";
 
 loadConfig();
 
-const ESCALATION_MESSAGE = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: reply \`!learn <answer>\` to teach me for next time.`;
+const ESCALATION_MESSAGE = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: use \`/learn <answer>\` to teach me for next time.`;
 
+// Shown when a customer types a plain message the bot cannot read (no Message Content intent).
+const NUDGE_MESSAGE =
+  "I can't read messages directly — click the button below or use `/ask <your question>` and I'll answer right away.";
+
+// No privileged intents. Guilds + GuildMessages are non-privileged: the bot still
+// receives message events (author, member, roles, timestamps) but NOT their text.
+// All content reaches the bot through interactions — slash commands and modals.
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
   ],
 });
 
@@ -38,7 +62,13 @@ const INACTIVITY_PROMPT_MESSAGE =
  * Extracts the user's custom inquiry from a tickets.bot message.
  * Checks both plain text content and embed fields/description.
  * Returns the inquiry string, or null if not found.
+ *
+ * DORMANT: automatic ticket triage requires the Message Content intent — without it the
+ * ticket bot's embeds arrive empty, so nothing calls this. Kept intact (together with
+ * TICKET_BOT_ID) so auto-triage can be restored by re-enabling the intent and re-adding
+ * the ticket-bot branch to the messageCreate handler.
  */
+// eslint-disable-next-line no-unused-vars
 function extractTicketBotInquiry(content, embeds = []) {
   const header = "State your inquiry or issue";
 
@@ -77,78 +107,95 @@ function extractTicketBotInquiry(content, embeds = []) {
   return null;
 }
 
-/**
- * Send a reply to a user message, falling back to channel.send() if the original message
- * was deleted during the batch debounce window (Discord error 10008: Unknown Message).
- */
-async function safeReply(message, content) {
-  try {
-    return await message.reply(content);
-  } catch (err) {
-    if (err?.code === 10008 || /unknown message/i.test(err?.message || "")) {
-      logger.info("safeReply: original message gone — falling back to channel.send()");
-      return await message.channel.send(content);
-    }
-    throw err;
-  }
+/** True when the channel is a thread under the configured ticket channel. */
+function isTicketThread(channel) {
+  return Boolean(channel?.isThread?.() && channel.parentId === TICKET_CHANNEL_ID);
+}
+
+/** True when the interaction author holds the staff role. */
+function isStaffInteraction(interaction) {
+  return Boolean(STAFF_ROLE_ID && interaction.member?.roles?.cache?.has(STAFF_ROLE_ID));
+}
+
+/** Ephemeral reply helper — keeps command noise out of the customer's ticket. */
+function ephemeral(interaction, content) {
+  return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+}
+
+/** The welcome message posted when a ticket opens, with the "ask a question" button. */
+function buildWelcomeMessage() {
+  const button = new ButtonBuilder()
+    .setCustomId("ask_open")
+    .setLabel("Ask a question")
+    .setEmoji("❓")
+    .setStyle(ButtonStyle.Primary);
+
+  return {
+    content:
+      "👋 Welcome! Describe your issue and I'll try to answer straight away.\n\n" +
+      "Click the button below, or type `/ask <your question>` at any time.\n" +
+      "If I can't help, a human agent will take over.",
+    components: [new ActionRowBuilder().addComponents(button)],
+  };
 }
 
 /**
- * AI Support processor — called by the message batcher after the debounce window elapses.
+ * AI Support runner — the single entry point for every customer question.
  *
- * Receives `content` (possibly combined from multiple rapid-fire user messages) and
- * `message` (the LAST message in the batch, used for .reply() and channel/guild context).
- * Mirrors the original inline AI Support block: rate limit → redact → handleAISupport →
- * reply or escalate.
+ * Reached from /ask and from the modal opened by the welcome button. Both carry the
+ * question text in the interaction payload, so no message content intent is needed.
+ * Guards run before deferring so refusals stay ephemeral; the answer itself is public
+ * in the thread so staff can see what the bot told the customer.
  */
-async function processAISupport(content, message) {
-  if (!OPENAI_API_KEY) return;
-  if (!content) return;
+async function runAISupport(interaction, question) {
+  const threadId = interaction.channelId;
+
+  if (!isTicketThread(interaction.channel)) {
+    return ephemeral(interaction, "This command only works inside a support ticket.");
+  }
+  if (!OPENAI_API_KEY) {
+    return ephemeral(interaction, "AI support is not configured. A human agent will assist you.");
+  }
+  if (isThreadPaused(threadId)) {
+    return ephemeral(interaction, "A human agent is handling this ticket — they will reply shortly.");
+  }
+  if (!checkRateLimit(threadId)) {
+    return ephemeral(interaction, "Too many requests. Please wait a moment before asking again.");
+  }
+
+  await interaction.deferReply();
+
+  const safeQuestion = redactGiftCardCodes(question);
+  recordUserMessage(threadId, safeQuestion);
+  stopTracking(threadId); // customer described their issue → no inactivity prompt needed
+  recordActivity(threadId);
 
   try {
-    if (!checkRateLimit(message.channel.id)) {
-      logger.info("Rate limit exceeded for thread:", message.channel.id);
-      return;
-    }
+    const aiResult = await handleAISupport(safeQuestion, { history: getHistory(threadId) });
 
-    const safeContent = redactGiftCardCodes(content);
-    const aiResult = await handleAISupport(safeContent, message.channel);
+    const { answer, confidence, escalationReason } = aiResult ?? {};
+    const usable = aiResult && confidence >= 0.6;
+    const reply = usable ? answer : ESCALATION_MESSAGE;
 
-    if (!aiResult) {
-      logger.error("AI service returned null for thread:", message.channel.id);
-      return;
-    }
+    const sent = await interaction.editReply(reply);
+    recordBotAnswer(threadId, reply, sent?.id ?? null);
 
-    const { answer, confidence, escalationReason } = aiResult;
-
-    if (confidence >= 0.6) {
-      if (await shouldSkipDuplicateReply(message.channel, answer)) {
-        logger.info("Skipping duplicate reply — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
-        return;
-      }
-      await safeReply(message, answer);
-      recordBotMessage(message.channel.id, answer);
-      analytics.trackAIReply(message.channel.id, confidence);
-      logger.info("AI reply sent — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
+    if (usable) {
+      analytics.trackAIReply(threadId, confidence);
     } else {
-      if (await shouldSkipDuplicateReply(message.channel, ESCALATION_MESSAGE)) {
-        logger.info("Skipping duplicate escalation — thread:", message.channel.id);
-        return;
-      }
-      await safeReply(message, ESCALATION_MESSAGE);
-      recordBotMessage(message.channel.id, ESCALATION_MESSAGE);
-      analytics.trackEscalation(message.channel.id, escalationReason || 'low_confidence');
-      logger.info("Escalated to human — thread:", message.channel.id, "confidence:", confidence.toFixed(2));
+      analytics.trackEscalation(threadId, escalationReason || (aiResult ? "low_confidence" : "ai_null"));
     }
+
+    logger.info(
+      "AI reply sent — thread:", threadId,
+      "| confidence:", aiResult ? confidence.toFixed(2) : "n/a",
+      "| asked by:", interaction.user.tag
+    );
   } catch (err) {
-    logger.error("AI support error:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
+    logger.error("AI support error:", err?.message ?? err, "| thread:", threadId);
     try {
-      if (await shouldSkipDuplicateReply(message.channel, ESCALATION_MESSAGE)) {
-        logger.info("Skipping duplicate fallback escalation — thread:", message.channel.id);
-        return;
-      }
-      await safeReply(message, ESCALATION_MESSAGE);
-      recordBotMessage(message.channel.id, ESCALATION_MESSAGE);
+      await interaction.editReply(ESCALATION_MESSAGE);
+      recordBotAnswer(threadId, ESCALATION_MESSAGE);
     } catch (replyErr) {
       logger.error("Failed to send escalation message:", replyErr?.message);
     }
@@ -178,7 +225,22 @@ client.on("ready", async () => {
   if (CLIENT_ID) {
     try {
       const rest = new REST().setToken(BOT_TOKEN);
+      const STRING = 3;
+      const INTEGER = 4;
       const commands = [
+        // --- Customer commands ---
+        {
+          name: "ask",
+          description: "Ask a support question and get an answer right away",
+          options: [
+            {
+              name: "question",
+              description: "Describe your issue or question",
+              type: STRING,
+              required: true,
+            },
+          ],
+        },
         {
           name: "price",
           description: "Look up the price of a product",
@@ -186,7 +248,19 @@ client.on("ready", async () => {
             {
               name: "product",
               description: "Product name to search (e.g. Stand GTA, 2take1 Lifetime)",
-              type: 3, // STRING
+              type: STRING,
+              required: true,
+            },
+          ],
+        },
+        {
+          name: "payment",
+          description: "Submit a gift card code for manual verification by staff",
+          options: [
+            {
+              name: "code",
+              description: "Your gift card code — only staff will see it",
+              type: STRING,
               required: true,
             },
           ],
@@ -195,17 +269,50 @@ client.on("ready", async () => {
           name: "version",
           description: "Show the current running version of the bot",
         },
+        // --- Staff commands (role-checked at runtime) ---
+        {
+          name: "learn",
+          description: "[Staff] Teach the bot the answer to the customer's last question",
+          options: [
+            { name: "answer", description: "The correct answer to send and save", type: STRING, required: true },
+          ],
+        },
+        {
+          name: "bad",
+          description: "[Staff] Delete the bot's last answer and replace it with the correct one",
+          options: [
+            { name: "answer", description: "The correct answer to send and save", type: STRING, required: true },
+          ],
+        },
+        { name: "pause", description: "[Staff] Pause bot replies in this ticket for 5 minutes" },
+        { name: "mute", description: "[Staff] Mute the bot in this ticket until /resume" },
+        { name: "resume", description: "[Staff] Resume bot replies in this ticket" },
+        {
+          name: "rule",
+          description: "[Staff] Add a behaviour rule applied to every AI reply",
+          options: [
+            { name: "instruction", description: "e.g. Always reply in Spanish when the user writes Spanish", type: STRING, required: true },
+          ],
+        },
+        { name: "rules", description: "[Staff] List all behaviour rules" },
+        {
+          name: "rule-del",
+          description: "[Staff] Delete a behaviour rule by id",
+          options: [
+            { name: "id", description: "Rule id (get it with /rules)", type: INTEGER, required: true },
+          ],
+        },
       ];
       const route = GUILD_ID
         ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
         : Routes.applicationCommands(CLIENT_ID);
       await rest.put(route, { body: commands });
-      logger.info("/price command registered —", GUILD_ID ? `guild ${GUILD_ID}` : "global");
+      logger.info(commands.length, "slash commands registered —", GUILD_ID ? `guild ${GUILD_ID}` : "global");
     } catch (err) {
-      logger.error("Failed to register /price command:", err?.message);
+      logger.error("Failed to register slash commands:", err?.message);
     }
   } else {
-    logger.info("CLIENT_ID not set — /price slash command not registered");
+    logger.info("CLIENT_ID not set — slash commands not registered");
   }
 
   // Check every 15s for threads where creator hasn't replied after 1 min
@@ -282,493 +389,296 @@ client.on("ready", async () => {
 client.on("threadCreate", async (thread) => {
   if (thread.parentId !== TICKET_CHANNEL_ID) return;
   if (thread.archived) return;
-  // Real ticket owner = first human member (user added by ticket bot), not thread.ownerId (the bot)
-  let ticketOwnerId = null;
-  try {
-    const members = await thread.members.fetch();
-    // Pick first non-bot, non-staff human member as ticket owner
-    for (const [, m] of members) {
-      if (m.user.bot || m.user.id === client.user.id) continue;
-      if (STAFF_ROLE_ID) {
-        const guildMember = await thread.guild.members.fetch(m.user.id).catch(() => null);
-        if (guildMember?.roles?.cache?.has(STAFF_ROLE_ID)) continue;
-      }
-      ticketOwnerId = m.user.id;
-      break;
-    }
-  } catch (_) {}
-  trackThread(thread.id, ticketOwnerId);
+  // The ticket owner can no longer be resolved at creation time — listing thread members
+  // requires the Server Members intent. onMessageInThread() already treats a null owner as
+  // "any human message counts as the customer replying", which is the behaviour we want.
+  trackThread(thread.id, null);
   startIdleTracking(thread.id);
   analytics.trackTicketOpened(thread.id);
-  logger.info("New ticket thread tracked:", thread.id, "ticket owner:", ticketOwnerId || "unknown");
+
+  // Post the welcome message with the "Ask a question" button. This is now the customer's
+  // way in: the bot cannot read their messages, so they must reach it via an interaction.
+  try {
+    await thread.send(buildWelcomeMessage());
+  } catch (err) {
+    logger.error("Failed to post welcome message — thread:", thread.id, "|", err?.message);
+  }
+
+  logger.info("New ticket thread tracked:", thread.id);
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  try {
+    // --- Welcome button → open the question modal ---
+    if (interaction.isButton() && interaction.customId === "ask_open") {
+      const input = new TextInputBuilder()
+        .setCustomId("ask_input")
+        .setLabel("What do you need help with?")
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder("Order, license activation, payment, product question…")
+        .setRequired(true)
+        .setMaxLength(1000);
 
-  if (interaction.commandName === "version") {
-    await interaction.reply({ content: `🤖 Bot version: **v${BOT_VERSION}**`, ephemeral: true });
-    return;
-  }
+      const modal = new ModalBuilder()
+        .setCustomId("ask_modal")
+        .setTitle("Ask a question")
+        .addComponents(new ActionRowBuilder().addComponents(input));
 
-  if (interaction.commandName !== "price") return;
-
-  const query = interaction.options.getString("product");
-  logger.info("/price command used by:", interaction.user.tag, "| query:", query);
-
-  await interaction.deferReply();
-
-  const results = searchPrices(query);
-
-  if (results.length === 0) {
-    await interaction.editReply(`No products found matching **${query}**. Try a different name (e.g. \`Stand GTA\`, \`2take1 Lifetime\`, \`Kernaim CS2\`).`);
-    return;
-  }
-
-  const lines = results.map((p) => `• **${p.name}** — €${p.price.toFixed(2)}`);
-  const response = `**Price results for "${query}":**\n${lines.join("\n")}`;
-  await interaction.editReply(response);
-  logger.info("/price reply sent —", results.length, "result(s) for query:", query);
-});
-
-client.on("messageCreate", async (message) => {
-  // Handle ticket bot messages: detect custom inquiry and route to AI support
-  if (TICKET_BOT_ID && message.author.id === TICKET_BOT_ID) {
-    logger.info(
-      "[TicketBot] Message received — author:", message.author.id,
-      "| isThread:", message.channel.isThread(),
-      "| parentId:", message.channel.parentId,
-      "| expectedParent:", TICKET_CHANNEL_ID,
-      "| hasContent:", !!message.content,
-      "| embedCount:", message.embeds?.length ?? 0
-    );
-
-    if (message.content) {
-      logger.info("[TicketBot] Content (first 300 chars):", JSON.stringify(message.content.slice(0, 300)));
-    }
-    for (const [i, embed] of (message.embeds ?? []).entries()) {
-      logger.info(
-        `[TicketBot] Embed[${i}] title:`, embed.title,
-        "| description:", JSON.stringify(embed.description?.slice(0, 200)),
-        "| fields:", JSON.stringify((embed.fields ?? []).map(f => ({ name: f.name, value: f.value?.slice(0, 100) })))
-      );
-    }
-
-    if (!message.channel.isThread() || message.channel.parentId !== TICKET_CHANNEL_ID) {
-      logger.info("[TicketBot] Skipping — not a ticket thread.");
-      return;
-    }
-    if (!OPENAI_API_KEY) {
-      logger.info("[TicketBot] Skipping — OPENAI_API_KEY not configured.");
+      await interaction.showModal(modal);
       return;
     }
 
-    const inquiry = extractTicketBotInquiry(message.content, message.embeds ?? []);
-    if (!inquiry) {
-      logger.info("[TicketBot] No inquiry found — likely a PayPal or non-inquiry message. Skipping.");
+    // --- Modal submitted → same AI path as /ask ---
+    if (interaction.isModalSubmit() && interaction.customId === "ask_modal") {
+      await runAISupport(interaction, interaction.fields.getTextInputValue("ask_input"));
       return;
     }
 
-    const threadId = message.channel.id;
-    stopTracking(threadId);
-    logger.info("[TicketBot] Inquiry extracted — thread:", threadId, "| inquiry:", inquiry.slice(0, 100));
+    if (!interaction.isChatInputCommand()) return;
 
-    try {
-      if (!checkRateLimit(threadId)) {
-        logger.info("[TicketBot] Rate limit exceeded — thread:", threadId);
-        return;
-      }
+    const name = interaction.commandName;
+    const threadId = interaction.channelId;
 
-      const safeInquiry = redactGiftCardCodes(inquiry);
-      logger.info("[TicketBot] Calling AI support — thread:", threadId);
+    // ================= Customer commands =================
 
-      const aiResult = await handleAISupport(safeInquiry, message.channel);
-      if (!aiResult) {
-        logger.error("[TicketBot] AI returned null — thread:", threadId);
-        return;
-      }
-
-      const { answer, confidence, escalationReason } = aiResult;
-      logger.info("[TicketBot] AI response — thread:", threadId, "| confidence:", confidence.toFixed(2), "| answer:", answer.slice(0, 100));
-
-      const reply = confidence >= 0.6
-        ? answer
-        : ESCALATION_MESSAGE;
-
-      if (await shouldSkipDuplicateReply(message.channel, reply)) {
-        logger.info("[TicketBot] Duplicate reply skipped — thread:", threadId);
-        return;
-      }
-
-      await message.channel.send(reply);
-      recordBotMessage(threadId, reply);
-
-      if (confidence >= 0.6) {
-        analytics.trackAIReply(threadId, confidence);
-      } else {
-        analytics.trackEscalation(threadId, escalationReason || 'low_confidence');
-      }
-
-      logger.info("[TicketBot] Reply sent — thread:", threadId, "| confidence:", confidence.toFixed(2));
-    } catch (err) {
-      logger.error("[TicketBot] Error handling inquiry:", err?.message, "| thread:", message.channel.id);
+    if (name === "version") {
+      return ephemeral(interaction, `🤖 Bot version: **v${BOT_VERSION}**`);
     }
-    return;
-  }
 
-  if (message.author.bot) return;
+    if (name === "ask") {
+      logger.info("/ask by:", interaction.user.tag, "| thread:", threadId);
+      return runAISupport(interaction, interaction.options.getString("question"));
+    }
 
-  // Training-channel commands for staff: !rule, !rules, !rule-del
-  // These run BEFORE the ticket-thread gate because the training channel is a normal channel,
-  // not a ticket thread.
-  if (
-    TRAINING_CHANNEL_ID &&
-    message.channel.id === TRAINING_CHANNEL_ID &&
-    STAFF_ROLE_ID &&
-    message.member?.roles?.cache?.has(STAFF_ROLE_ID) &&
-    message.content
-  ) {
-    const text = message.content.trim();
-    const lower = text.toLowerCase();
+    if (name === "price") {
+      const query = interaction.options.getString("product");
+      logger.info("/price by:", interaction.user.tag, "| query:", query);
+      await interaction.deferReply();
 
-    // !rule <instruction>
-    // The trailing space already excludes "!rule-del" and "!rules" (no space after "rule").
-    if (lower.startsWith("!rule ")) {
-      const ruleText = text.slice("!rule".length).trim();
-      if (!ruleText) {
-        const hint = await message.reply("Usage: `!rule <instruction>` — e.g. `!rule Always reply in Spanish when the user writes in Spanish.`");
-        setTimeout(() => hint.delete().catch(() => {}), 8000);
-        return;
+      const results = searchPrices(query);
+      if (results.length === 0) {
+        return interaction.editReply(
+          `No products found matching **${query}**. Try a different name (e.g. \`Stand GTA\`, \`2take1 Lifetime\`, \`Kernaim CS2\`).`
+        );
       }
+      const lines = results.map((p) => `• **${p.name}** — €${p.price.toFixed(2)}`);
+      await interaction.editReply(`**Price results for "${query}":**\n${lines.join("\n")}`);
+      logger.info("/price reply sent —", results.length, "result(s)");
+      return;
+    }
+
+    if (name === "payment") {
+      if (!isTicketThread(interaction.channel)) {
+        return ephemeral(interaction, "Please use this inside your support ticket.");
+      }
+      const code = interaction.options.getString("code");
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      // The code goes into the thread, not into the notification: notification.js
+      // requires the excerpt it receives to stay redacted. Staff read the code here.
+      const posted = await interaction.channel
+        .send(`💳 Payment submitted by <@${interaction.user.id}>:\n\`\`\`\n${code}\n\`\`\``)
+        .catch((err) => {
+          logger.error("/payment: failed to post code in thread:", err?.message);
+          return null;
+        });
+
+      if (!posted) {
+        return interaction.editReply("Could not submit your payment. Please post the code in this ticket and staff will handle it.");
+      }
+
       try {
-        const entry = appendRule(ruleText, message.author.id);
-        try { await message.delete(); } catch (_) {}
-        const confirm = await message.channel.send(`✅ Rule #${entry.id} saved: ${entry.rule}`);
-        setTimeout(() => confirm.delete().catch(() => {}), 8000);
-        logger.info("[!rule] Added rule #", entry.id, "by", message.author.tag);
+        const paymentChannel = await interaction.guild.channels.fetch(PAYMENT_CHANNEL_ID);
+        if (paymentChannel) {
+          await sendPaymentNotification({
+            paymentChannel,
+            threadLink: `https://discord.com/channels/${interaction.guildId}/${threadId}`,
+            authorTag: interaction.user.tag,
+            excerptRedacted: redactGiftCardCodes(code),
+            roleId: AMAZON_ROLE_ID,
+            timestampDiscord: `<t:${Math.floor(Date.now() / 1000)}:F>`,
+          });
+        } else {
+          logger.error("/payment: payment channel not found:", PAYMENT_CHANNEL_ID);
+        }
       } catch (err) {
-        logger.error("[!rule] Failed to save rule:", err?.message);
-        await message.reply("Failed to save rule. Check bot logs.");
+        logger.error("/payment: notification failed:", err?.message);
       }
+
+      recordActivity(threadId);
+      stopTracking(threadId);
+      await interaction.editReply("✅ Sent to staff for manual verification. Please wait — they will confirm shortly.");
+      logger.info("/payment submitted — thread:", threadId, "| user:", interaction.user.tag);
       return;
     }
 
-    // !rules — list all rules
-    if (lower === "!rules") {
-      try { await message.delete(); } catch (_) {}
-      const rules = listRules();
-      if (rules.length === 0) {
-        const reply = await message.channel.send("📋 No staff rules defined yet. Use `!rule <instruction>` to add one.");
-        setTimeout(() => reply.delete().catch(() => {}), 30000);
-        return;
+    // ================= Staff commands =================
+
+    const STAFF_COMMANDS = ["learn", "bad", "pause", "mute", "resume", "rule", "rules", "rule-del"];
+    if (STAFF_COMMANDS.includes(name) && !isStaffInteraction(interaction)) {
+      return ephemeral(interaction, "This command is restricted to support staff.");
+    }
+
+    if (name === "learn" || name === "bad") {
+      if (!isTicketThread(interaction.channel)) {
+        return ephemeral(interaction, "Use this inside a ticket thread.");
       }
-      const lines = rules.map((r) => `**#${r.id}** ${r.rule}`).join("\n");
-      const reply = await message.channel.send(`📋 **Staff rules (${rules.length}):**\n${lines}`);
-      setTimeout(() => reply.delete().catch(() => {}), 30000);
+      const answer = interaction.options.getString("answer");
+      const lastQuestion = getLastUserQuestion(threadId);
+
+      if (!lastQuestion) {
+        return ephemeral(
+          interaction,
+          "No customer question recorded in this ticket yet — the customer must ask via the button or `/ask` first."
+        );
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      // /bad additionally removes the bot's last (incorrect) answer, and cleans up the
+      // question with the LLM so mentions and rambling don't pollute FAQ keywords.
+      let questionForFAQ = lastQuestion;
+      if (name === "bad") {
+        const badId = getLastAnswerId(threadId);
+        if (badId) {
+          try {
+            const badMsg = await interaction.channel.messages.fetch(badId);
+            await badMsg.delete();
+          } catch (err) {
+            logger.info("/bad: could not delete previous answer:", err?.message);
+          }
+        }
+        try {
+          const extracted = await extractCoreQuestion(lastQuestion);
+          if (extracted) questionForFAQ = extracted;
+        } catch (err) {
+          logger.error("/bad: extractCoreQuestion failed:", err?.message);
+        }
+      }
+
+      const keywords = extractKeywords(questionForFAQ);
+      try {
+        appendLearnedEntry(questionForFAQ, answer, keywords);
+      } catch (err) {
+        logger.error(`/${name}: failed to save entry:`, err?.message);
+        return interaction.editReply("Failed to save to knowledge base. Check bot logs.");
+      }
+
+      analytics.trackLearnEvent(threadId);
+
+      const sent = await interaction.channel.send(answer).catch((err) => {
+        logger.error(`/${name}: failed to send answer:`, err?.message);
+        return null;
+      });
+      recordBotAnswer(threadId, answer, sent?.id ?? null);
+
+      await interaction.editReply(
+        `✅ Saved to knowledge base.\nQuestion: \`${questionForFAQ.slice(0, 120)}\`\nKeywords: \`${keywords.join(", ") || "none"}\``
+      );
+      logger.info(`/${name} saved — thread:`, threadId, "| by:", interaction.user.tag, "| keywords:", keywords.join(", "));
       return;
     }
 
-    // !rule-del <id>  (require exact token or trailing space to avoid matching "!rule-delete-everything")
-    if (lower === "!rule-del" || lower.startsWith("!rule-del ")) {
-      const idStr = text.slice("!rule-del".length).trim();
-      const id = Number(idStr);
-      if (!Number.isFinite(id) || id <= 0) {
-        const hint = await message.reply("Usage: `!rule-del <id>` — get IDs with `!rules`.");
-        setTimeout(() => hint.delete().catch(() => {}), 8000);
-        return;
+    if (name === "pause" || name === "mute" || name === "resume") {
+      if (!isTicketThread(interaction.channel)) {
+        return ephemeral(interaction, "Use this inside a ticket thread.");
       }
+      if (name === "pause") {
+        pauseThread(threadId);
+        logger.info("Thread paused by staff:", threadId, "|", interaction.user.tag);
+        return ephemeral(interaction, "✅ Bot paused for this ticket. Auto-resumes after 5 minutes.");
+      }
+      if (name === "mute") {
+        pauseThreadIndefinitely(threadId);
+        logger.info("Thread muted by staff:", threadId, "|", interaction.user.tag);
+        return ephemeral(interaction, "✅ Bot muted for this ticket until you use **/resume**.");
+      }
+      resumeThread(threadId);
+      logger.info("Thread resumed by staff:", threadId, "|", interaction.user.tag);
+      return ephemeral(interaction, "✅ Bot replies resumed for this ticket.");
+    }
+
+    if (name === "rule" || name === "rules" || name === "rule-del") {
+      if (!TRAINING_CHANNEL_ID) {
+        return ephemeral(interaction, "TRAINING_CHANNEL_ID is not configured — rule commands are disabled.");
+      }
+      if (interaction.channelId !== TRAINING_CHANNEL_ID) {
+        return ephemeral(interaction, `Rule commands only work in <#${TRAINING_CHANNEL_ID}>.`);
+      }
+
+      if (name === "rule") {
+        const instruction = interaction.options.getString("instruction");
+        try {
+          const entry = appendRule(instruction, interaction.user.id);
+          logger.info("/rule added #", entry.id, "by", interaction.user.tag);
+          return ephemeral(interaction, `✅ Rule #${entry.id} saved: ${entry.rule}`);
+        } catch (err) {
+          logger.error("/rule failed:", err?.message);
+          return ephemeral(interaction, "Failed to save rule. Check bot logs.");
+        }
+      }
+
+      if (name === "rules") {
+        const rules = listRules();
+        if (rules.length === 0) {
+          return ephemeral(interaction, "📋 No staff rules defined yet. Use `/rule` to add one.");
+        }
+        const lines = rules.map((r) => `**#${r.id}** ${r.rule}`).join("\n");
+        return ephemeral(interaction, `📋 **Staff rules (${rules.length}):**\n${lines}`.slice(0, 1900));
+      }
+
+      const id = interaction.options.getInteger("id");
       try {
         const removed = deleteRule(id);
-        try { await message.delete(); } catch (_) {}
-        const reply = await message.channel.send(removed ? `✅ Rule #${id} removed.` : `⚠️ Rule #${id} not found.`);
-        setTimeout(() => reply.delete().catch(() => {}), 8000);
-        if (removed) logger.info("[!rule-del] Removed rule #", id, "by", message.author.tag);
+        if (removed) logger.info("/rule-del removed #", id, "by", interaction.user.tag);
+        return ephemeral(interaction, removed ? `✅ Rule #${id} removed.` : `⚠️ Rule #${id} not found.`);
       } catch (err) {
-        logger.error("[!rule-del] Failed to delete:", err?.message);
-        await message.reply("Failed to delete rule. Check bot logs.");
+        logger.error("/rule-del failed:", err?.message);
+        return ephemeral(interaction, "Failed to delete rule. Check bot logs.");
       }
-      return;
     }
+  } catch (err) {
+    logger.error("interactionCreate error:", err?.message ?? err, "| command:", interaction.commandName ?? interaction.customId);
+    // Surface something to the user rather than leaving the interaction hanging
+    try {
+      if (interaction.deferred) await interaction.editReply("Something went wrong. A human agent will assist you.");
+      else if (!interaction.replied) await ephemeral(interaction, "Something went wrong. Please try again.");
+    } catch (_) {}
   }
+});
 
-  if (!message.channel.isThread()) return;
-  if (message.channel.parentId !== TICKET_CHANNEL_ID) return;
+// Message events still arrive without the Message Content intent: the text is empty, but
+// author, member and roles are present. That is enough to keep inactivity tracking and the
+// staff auto-pause working. Everything text-based moved to slash commands and the modal.
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  if (!isTicketThread(message.channel)) return;
 
-  const content = message.content;
   const threadId = message.channel.id;
   const isStaff = STAFF_ROLE_ID && message.member?.roles?.cache?.has(STAFF_ROLE_ID);
 
-  // Notify inactivity tracker: creator or staff replied → stop tracking
   onMessageInThread(threadId, message.author.id, isStaff);
-  recordActivity(message.channelId);
+  recordActivity(threadId);
 
-  // Handle staff commands: !pause, !mute, !resume (accept both "!bot mute" and "!bot-mute")
-  if (isStaff && content) {
-    // !version — report running bot version
-    if (content.trim().toLowerCase() === "!version") {
-      await message.reply(`🤖 Bot version: **v${BOT_VERSION}**`);
-      return;
-    }
-
-    // !learn command: staff teaches the bot a new Q&A answer
-    if (content.trim().toLowerCase().startsWith("!learn ")) {
-      const learnedAnswer = content.trim().slice("!learn ".length).trim();
-      if (!learnedAnswer) {
-        await message.reply("Usage: `!learn <your answer here>`");
-        return;
-      }
-
-      // Find the last non-bot, non-staff user message in this thread
-      let userQuestion = null;
-      try {
-        const fetched = await message.channel.messages.fetch({ limit: 20 });
-        const msgs = Array.from(fetched.values()).reverse();
-        for (const m of msgs) {
-          if (m.author.bot) continue;
-          if (m.id === message.id) continue;
-          const memberData = await message.guild.members.fetch(m.author.id).catch(() => null);
-          const isMemberStaff = STAFF_ROLE_ID && memberData?.roles?.cache?.has(STAFF_ROLE_ID);
-          if (!isMemberStaff) {
-            userQuestion = redactGiftCardCodes(m.content || "");
-            break;
-          }
-        }
-      } catch (err) {
-        logger.error("!learn: failed to fetch thread history:", err?.message);
-      }
-
-      if (!userQuestion) {
-        await message.reply("Could not find the original customer question in this thread.");
-        return;
-      }
-
-      const keywords = extractKeywords(userQuestion);
-
-      try {
-        appendLearnedEntry(userQuestion, learnedAnswer, keywords);
-      } catch (err) {
-        logger.error("!learn: failed to save entry:", err?.message);
-        await message.reply("Failed to save to knowledge base. Check bot logs.");
-        return;
-      }
-
-      analytics.trackLearnEvent(message.channelId);
-
-      // Send the learned answer to the customer
-      await message.channel.send(learnedAnswer);
-
-      // Confirm to staff, then auto-delete the confirmation after 6 seconds
-      const confirm = await message.reply(
-        `✅ Saved to knowledge base.\nKeywords extracted: \`${keywords.length > 0 ? keywords.join(", ") : "none"}\``
-      );
-      setTimeout(() => confirm.delete().catch(() => {}), 6000);
-
-      // Delete the !learn command to keep the thread clean
-      try { await message.delete(); } catch (_) {}
-
-      logger.info("!learn: new entry saved — thread:", threadId, "| question:", userQuestion.slice(0, 80), "| keywords:", keywords.join(", "));
-      return;
-    }
-
-    // !bad command: staff replies to a bad bot message to correct it
-    // Usage: right-click a bot message → Reply → type "!bad <correct answer>"
-    if (content.trim().toLowerCase().startsWith("!bad")) {
-      const correctAnswer = content.trim().slice("!bad".length).trim();
-
-      if (!message.reference?.messageId) {
-        const hint = await message.reply("Usage: reply directly to the bad bot message and type `!bad <correct answer>`.");
-        setTimeout(() => hint.delete().catch(() => {}), 6000);
-        try { await message.delete(); } catch (_) {}
-        return;
-      }
-
-      if (!correctAnswer) {
-        const hint = await message.reply("Usage: `!bad <correct answer>` — include the correct answer after `!bad`.");
-        setTimeout(() => hint.delete().catch(() => {}), 6000);
-        try { await message.delete(); } catch (_) {}
-        return;
-      }
-
-      // Fetch the referenced (bad) message
-      let badMsg = null;
-      try {
-        badMsg = await message.channel.messages.fetch(message.reference.messageId);
-      } catch (err) {
-        logger.error("!bad: failed to fetch referenced message:", err?.message);
-      }
-
-      if (!badMsg || badMsg.author.id !== client.user.id) {
-        const hint = await message.reply("Could not find the bot message you replied to. Make sure you reply directly to a bot message.");
-        setTimeout(() => hint.delete().catch(() => {}), 6000);
-        try { await message.delete(); } catch (_) {}
-        return;
-      }
-
-      // Find the user message that triggered the bad bot reply
-      // Look for the first non-bot message sent before the bad bot reply
-      let userQuestion = null;
-      try {
-        const fetched = await message.channel.messages.fetch({ limit: 50, before: badMsg.id });
-        const msgs = Array.from(fetched.values()); // newest first
-        for (const m of msgs) {
-          if (m.author.bot) continue;
-          const memberData = await message.guild.members.fetch(m.author.id).catch(() => null);
-          const isMemberStaff = STAFF_ROLE_ID && memberData?.roles?.cache?.has(STAFF_ROLE_ID);
-          if (!isMemberStaff) {
-            userQuestion = redactGiftCardCodes(m.content || "");
-            break;
-          }
-        }
-      } catch (err) {
-        logger.error("!bad: failed to fetch thread history:", err?.message);
-      }
-
-      // LLM-extract the core question so mentions/multi-topic rambling don't pollute the FAQ.
-      // Falls back to the raw message on any failure so !bad never blocks on OpenAI.
-      let cleanedQuestion = userQuestion;
-      if (userQuestion) {
-        try {
-          const extracted = await extractCoreQuestion(userQuestion);
-          if (extracted) cleanedQuestion = extracted;
-        } catch (err) {
-          logger.error("!bad: extractCoreQuestion failed:", err?.message);
-        }
-      }
-
-      const keywords = extractKeywords(cleanedQuestion || correctAnswer);
-      const questionForFAQ = cleanedQuestion || "Correction provided by staff";
-
-      try {
-        appendLearnedEntry(questionForFAQ, correctAnswer, keywords);
-      } catch (err) {
-        logger.error("!bad: failed to save entry:", err?.message);
-        await message.reply("Failed to save to knowledge base. Check bot logs.");
-        return;
-      }
-
-      analytics.trackLearnEvent(message.channelId);
-
-      // Delete the bad bot reply
-      try { await badMsg.delete(); } catch (_) {}
-
-      // Send the correct answer to the thread
-      await message.channel.send(correctAnswer);
-
-      // Delete the !bad command
-      try { await message.delete(); } catch (_) {}
-
-      // Brief staff confirmation
-      const confirm = await message.channel.send(
-        `✅ Bad reply removed and correct answer saved to knowledge base.\nKeywords: \`${keywords.length > 0 ? keywords.join(", ") : "none"}\``
-      );
-      setTimeout(() => confirm.delete().catch(() => {}), 5000);
-
-      logger.info("!bad: bad reply corrected — thread:", threadId, "| question:", questionForFAQ.slice(0, 80), "| keywords:", keywords.join(", "));
-      return;
-    }
-
-    const lowerContent = content.toLowerCase().trim();
-    const cmd = lowerContent.replace(/-/g, " ").replace(/\s+/g, " ");
-    if (cmd === "!pause" || cmd === "!bot pause") {
-      pauseThread(threadId);
-      await message.reply("✅ Bot replies paused for this thread. Will auto-resume after 5 minutes of inactivity.");
-      try {
-        await message.delete();
-      } catch (err) {
-        logger.error("Failed to delete command message:", err?.message);
-      }
-      logger.info("Thread paused manually by staff:", threadId, "staff:", message.author.tag);
-      return;
-    }
-    if (cmd === "!mute" || cmd === "!bot mute") {
-      pauseThreadIndefinitely(threadId);
-      await message.reply("✅ Bot is now muted for this thread. No replies until you use **!resume**.");
-      try {
-        await message.delete();
-      } catch (err) {
-        logger.error("Failed to delete command message:", err?.message);
-      }
-      logger.info("Thread muted indefinitely by staff:", threadId, "staff:", message.author.tag);
-      return;
-    }
-    if (cmd === "!resume" || cmd === "!bot resume") {
-      resumeThread(threadId);
-      await message.reply("✅ Bot replies resumed for this thread.");
-      try {
-        await message.delete();
-      } catch (err) {
-        logger.error("Failed to delete command message:", err?.message);
-      }
-      logger.info("Thread resumed manually by staff:", threadId, "staff:", message.author.tag);
-      return;
-    }
-  }
-
-  // Detect staff activity: if staff replies, pause bot automatically
+  // Staff replied → pause the bot so it never talks over a human agent
   if (isStaff) {
     updateStaffActivity(threadId);
-    flushThreadBatches(threadId); // staff is taking over — drop any pending batched replies
-    logger.info("Staff activity detected — thread paused:", threadId, "staff:", message.author.tag);
-    return; // Staff replied → bot doesn't process this message
-  }
-
-  // Check if thread is paused (bot won't reply)
-  if (isThreadPaused(threadId)) {
-    flushBatch(threadId, message.author.id);
-    return; // Thread paused → bot skips
-  }
-
-  if (!content) return;
-
-  // Priority 1: Amazon Gift Card detection (existing behavior)
-  if (hasAmazonGiftCard(content)) {
-    try {
-      const paymentChannel = await message.guild.channels.fetch(PAYMENT_CHANNEL_ID);
-      if (!paymentChannel) {
-        logger.error("Channel paiement introuvable:", PAYMENT_CHANNEL_ID);
-        return;
-      }
-
-      const threadLink = `https://discord.com/channels/${message.guild.id}/${message.channel.id}`;
-      const excerptRedacted = redactGiftCardCodes(content);
-      const timestampDiscord = `<t:${Math.floor(Date.now() / 1000)}:F>`;
-
-      logger.info(
-        "Amazon gift card détectée — thread:",
-        message.channel.id,
-        "auteur:",
-        message.author.tag
-      );
-
-      await sendPaymentNotification({
-        paymentChannel,
-        threadLink,
-        authorTag: message.author.tag,
-        excerptRedacted,
-        roleId: AMAZON_ROLE_ID,
-        timestampDiscord,
-      });
-    } catch (err) {
-      logger.error("Erreur lors de la notification paiement:", err?.message ?? err, "channel:", message.channel?.id, "message:", message.id);
-    }
-    // Drop any pending text batch for this user — the payment notification IS the response.
-    flushBatch(threadId, message.author.id);
+    logger.info("Staff activity detected — thread paused:", threadId, "| staff:", message.author.tag);
     return;
   }
 
-  // Priority 2: AI Support — debounced via messageBatcher.
-  // Rapid-fire user messages from the SAME user in the SAME thread are batched and processed
-  // once after BATCH_WAIT_MS of silence (or BATCH_MAX_WAIT_MS hard ceiling).
-  if (!OPENAI_API_KEY) {
-    return;
-  }
+  // A customer typed a normal message. The bot cannot read it, so rather than leaving them
+  // in silence, point them at the button. shouldSkipDuplicateReply caps this at one nudge
+  // per thread per 2-minute window so it never turns into spam.
+  if (isThreadPaused(threadId)) return;
 
   try {
-    enqueueMessage(message, processAISupport);
+    if (await shouldSkipDuplicateReply(message.channel, NUDGE_MESSAGE)) return;
+    await message.channel.send({ ...buildWelcomeMessage(), content: NUDGE_MESSAGE });
+    recordBotMessage(threadId, NUDGE_MESSAGE);
+    logger.info("Ask-nudge sent — thread:", threadId, "| user:", message.author.tag);
   } catch (err) {
-    logger.error("messageBatcher.enqueueMessage threw — falling back to direct processing:", err?.message);
-    // Defensive fallback: if the batcher itself fails, process inline so the user still gets a reply.
-    await processAISupport(content, message);
+    logger.error("Failed to send ask-nudge — thread:", threadId, "|", err?.message);
   }
 });
 
@@ -777,8 +687,9 @@ client.on('threadUpdate', async (oldThread, newThread) => {
   // Only act when a ticket thread gets archived
   if (!newThread.archived || oldThread.archived) return;
 
-  // Stop idle tracking for this thread
+  // Stop idle tracking and drop the conversation log for this thread
   stopIdleTracking(newThread.id);
+  clearThread(newThread.id);
 
   if (!ANALYTICS_CHANNEL_ID) return;
 

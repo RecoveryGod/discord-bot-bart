@@ -22,19 +22,39 @@ No test suite or linter is configured. There is no build step — this is plain 
 
 ## Environment
 
-Copy `.env.example` to `.env`. Required vars: `BOT_TOKEN`, `PAYMENT_CHANNEL_ID`, `AMAZON_ROLE_ID`, `TICKET_CHANNEL_ID`. Optional but needed for full functionality: `OPENAI_API_KEY` (AI replies), `STAFF_ROLE_ID` (staff detection), `TICKET_BOT_ID` (auto-reply to ticket inquiries), `CLIENT_ID` + `GUILD_ID` (slash command registration).
+Copy `.env.example` to `.env`. Required vars: `BOT_TOKEN`, `PAYMENT_CHANNEL_ID`, `AMAZON_ROLE_ID`, `TICKET_CHANNEL_ID`. Optional but needed for full functionality: `OPENAI_API_KEY` (AI replies), `STAFF_ROLE_ID` (staff detection), `CLIENT_ID` + `GUILD_ID` (slash command registration — **required**, the bot is driven entirely by slash commands). `TICKET_BOT_ID` is currently unused (see "No privileged intents").
 
 ## Architecture
 
 Single-process Discord bot. All bot logic lives in `src/index.js` — it is the only event handler. Services are stateless utility modules imported by index.js.
 
+### No privileged intents
+
+The bot runs with `Guilds` + `GuildMessages` only — **no `MessageContent`, no `GuildMembers`**.
+It therefore cannot read message text. Every piece of user input arrives through an
+interaction (slash command or modal). Do not add content-reading logic to `messageCreate`;
+it will silently receive empty strings.
+
+Two functions are deliberately kept but dormant, so auto-triage can be restored if the
+intents are ever approved: `extractTicketBotInquiry()` in `index.js` and
+`fetchThreadHistory()` in `aiService.js`.
+
 ### Message flow for ticket threads
 
-1. **Ticket opened** → `threadCreate` → starts inactivity tracking
-2. **Ticket bot message** → `messageCreate` → `extractTicketBotInquiry()` pulls user's question from embed → AI support path
-3. **User message in ticket** → `messageCreate`:
-   - Amazon gift card detected → notify payment channel → stop
-   - Otherwise → `handleAISupport()` → reply or escalate
+1. **Ticket opened** → `threadCreate` → inactivity tracking + welcome message with an
+   "Ask a question" button
+2. **Customer asks** → `/ask <question>`, or the button → modal → both call `runAISupport()`
+3. **Customer types a plain message** → `messageCreate` → bot can't read it → posts a nudge
+   pointing at the button (capped at one per 2 min by `messageDeduplication.js`)
+4. **Customer submits payment** → `/payment <code>` → posts the code in the thread and
+   notifies the payment channel with a *redacted* excerpt
+5. **Staff replies** → `messageCreate` sees the author's role → auto-pauses the bot
+
+### Conversation memory (`src/services/conversationLog.js`)
+
+Because history can't be read back from Discord, the bot records its own exchanges in
+memory per thread. This feeds AI context, and supplies the "last customer question" that
+`/learn` and `/bad` operate on. Lost on restart, like all other state here.
 
 ### AI support pipeline (`src/services/aiService.js`)
 
@@ -46,20 +66,36 @@ Confidence is self-reported by the model as JSON: `{"answer": "...", "confidence
 
 FAQ is loaded lazily and cached in-memory (`faqData`). Matching is keyword-based: +2 per keyword hit, +1/+0.5 per query word matching question/answer. Top 5 entries by score are passed as context. `FAQ_MIN_SCORE = 2`.
 
-**Staff learning:** when staff types `!learn <answer>` in a ticket thread, the bot saves a new entry to `data/faq.json` via `appendLearnedEntry()` and resets the in-memory cache (`faqData = null`). The learned entry is immediately searchable.
+**Staff learning:** when staff runs `/learn <answer>` in a ticket thread, the bot saves a new entry to `data/faq.json` via `appendLearnedEntry()` and resets the in-memory cache (`faqData = null`). The learned entry is immediately searchable.
 
 ### Product prices (`prices.py` + `src/services/priceService.js`)
 
 Prices are parsed from `prices.py` — a Python dict with line format `"SKU": price,  # Product Name`. The price service word-matches product names against the user query. `/price` slash command uses this directly.
 
-### Staff controls (in-thread commands, staff role only)
+### Commands (all slash commands — the `!`-prefixed versions are gone)
+
+Customer-facing:
 
 | Command | Effect |
 |---------|--------|
-| `!pause` | Bot silent for 5 min (auto-resumes) |
-| `!mute` | Bot silent until `!resume` |
-| `!resume` | Re-enables bot |
-| `!learn <answer>` | Saves Q&A to knowledge base, sends answer to customer |
+| `/ask <question>` | AI support answer (also reachable via the welcome button) |
+| `/price <product>` | Price lookup |
+| `/payment <code>` | Submit a gift card for manual verification |
+| `/version` | Running bot version |
+
+Staff only (checked at runtime against `STAFF_ROLE_ID`):
+
+| Command | Effect |
+|---------|--------|
+| `/pause` | Bot silent for 5 min (auto-resumes) |
+| `/mute` | Bot silent until `/resume` |
+| `/resume` | Re-enables bot |
+| `/learn <answer>` | Saves Q&A to knowledge base, sends answer to customer |
+| `/bad <answer>` | Deletes the bot's last answer, saves the correction instead |
+| `/rule`, `/rules`, `/rule-del <id>` | Behaviour rules — restricted to `TRAINING_CHANNEL_ID` |
+
+`/learn` and `/bad` read the customer's last question from `conversationLog.js`, so the
+customer must have asked via `/ask` or the button first.
 
 When staff sends any message in a thread, bot auto-pauses for 5 minutes (`staffActivity.js`).
 
