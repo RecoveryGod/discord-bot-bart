@@ -132,9 +132,14 @@ function buildWelcomeMessage() {
 
   return {
     content:
-      "👋 Welcome! Describe your issue and I'll try to answer straight away.\n\n" +
-      "Click the button below, or type `/ask <your question>` at any time.\n" +
-      "If I can't help, a human agent will take over.",
+      "👋 **Welcome!** I can answer most questions instantly.\n\n" +
+      "**Ask me anything**\n" +
+      "Click the button below, or type `/ask <your question>`\n" +
+      "*Example: `/ask my license key is not working`*\n\n" +
+      "**Other commands**\n" +
+      "`/price <product>` — check a product's price\n" +
+      "`/version` — show which version of me is running\n\n" +
+      "If I can't answer, a human agent takes over automatically.",
     components: [new ActionRowBuilder().addComponents(button)],
   };
 }
