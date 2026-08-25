@@ -122,25 +122,35 @@ function ephemeral(interaction, content) {
   return interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
+// Single source of truth for what customers are told they can do — shown in the ticket
+// welcome message and again by /help. Staff-only commands are deliberately absent.
+const CUSTOMER_HELP =
+  "**Ask me anything**\n" +
+  "Click the button below, or type `/ask <your question>`\n" +
+  "*Example: `/ask my license key is not working`*\n\n" +
+  "**Other commands**\n" +
+  "`/price <product>` — check a product's price\n" +
+  "`/help` — show this list again";
+
+/** The "Ask a question" button that opens the question modal. */
+function buildAskButton() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("ask_open")
+      .setLabel("Ask a question")
+      .setEmoji("❓")
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
 /** The welcome message posted when a ticket opens, with the "ask a question" button. */
 function buildWelcomeMessage() {
-  const button = new ButtonBuilder()
-    .setCustomId("ask_open")
-    .setLabel("Ask a question")
-    .setEmoji("❓")
-    .setStyle(ButtonStyle.Primary);
-
   return {
     content:
       "👋 **Welcome!** I can answer most questions instantly.\n\n" +
-      "**Ask me anything**\n" +
-      "Click the button below, or type `/ask <your question>`\n" +
-      "*Example: `/ask my license key is not working`*\n\n" +
-      "**Other commands**\n" +
-      "`/price <product>` — check a product's price\n" +
-      "`/version` — show which version of me is running\n\n" +
-      "If I can't answer, a human agent takes over automatically.",
-    components: [new ActionRowBuilder().addComponents(button)],
+      CUSTOMER_HELP +
+      "\n\nIf I can't answer, a human agent takes over automatically.",
+    components: [buildAskButton()],
   };
 }
 
@@ -269,6 +279,10 @@ client.on("ready", async () => {
               required: true,
             },
           ],
+        },
+        {
+          name: "help",
+          description: "Show what I can help you with",
         },
         {
           name: "version",
@@ -445,6 +459,14 @@ client.on("interactionCreate", async (interaction) => {
     const threadId = interaction.channelId;
 
     // ================= Customer commands =================
+
+    if (name === "help") {
+      return interaction.reply({
+        content: CUSTOMER_HELP,
+        components: [buildAskButton()],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
 
     if (name === "version") {
       return ephemeral(interaction, `🤖 Bot version: **v${BOT_VERSION}**`);
