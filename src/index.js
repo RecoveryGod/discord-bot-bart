@@ -44,7 +44,9 @@ import * as logger from "./utils/logger.js";
 
 loadConfig();
 
-const ESCALATION_MESSAGE = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.\n> 💡 Staff: use \`/learn <answer>\` to teach me for next time.`;
+// Customer-visible: keep it free of internal instructions. Staff are pinged by the
+// role mention; the /learn reminder lives in the staff command list, not in the ticket.
+const ESCALATION_MESSAGE = `<@&${AMAZON_ROLE_ID}> A human agent will assist you shortly.`;
 
 // Shown when a customer types a plain message the bot cannot read (no Message Content intent).
 const NUDGE_MESSAGE =
