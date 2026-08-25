@@ -68,9 +68,27 @@ FAQ is loaded lazily and cached in-memory (`faqData`). Matching is keyword-based
 
 **Staff learning:** when staff runs `/learn <answer>` in a ticket thread, the bot saves a new entry to `data/faq.json` via `appendLearnedEntry()` and resets the in-memory cache (`faqData = null`). The learned entry is immediately searchable.
 
-### Product prices (`prices.py` + `src/services/priceService.js`)
+### Live product catalogue (`src/services/catalogueService.js`)
 
-Prices are parsed from `prices.py` — a Python dict with line format `"SKU": price,  # Product Name`. The price service word-matches product names against the user query. `/price` slash command uses this directly.
+Products and prices come from the shop, not from a file. `eldro-catalogue.php` — a
+read-only mu-plugin on eldromods.com — serves `GET /wp-json/eldro/v1/catalogue`,
+authenticated by the `X-Eldro-Token` header (`hash_equals` against the
+`ELDRO_CATALOGUE_TOKEN` constant in `wp-config.php`).
+
+The service keeps the catalogue in memory, mirrors it to `data/catalogue-cache.json`,
+and refreshes every `CATALOGUE_REFRESH_MS` (5 min). On boot it loads the disk copy
+first so the bot is useful immediately; if a refresh fails the previous copy is kept
+rather than serving nothing.
+
+The endpoint excludes variable parents (grouping only, not sellable) and zero-priced
+products (discontinued placeholders). Stock is the count of `lmfwc` licences with
+status 3 (ACTIVE) — deliberately not WooCommerce's `_stock`, which diverges from it.
+
+**Stock is staff-only.** `/price` and the AI context carry prices and descriptions
+only; `/stock` is the sole place a number appears, and it is role-gated and ephemeral.
+
+`prices.py` and `src/services/priceService.js` are no longer read. They are kept as a
+historical snapshot — editing `prices.py` has no effect.
 
 ### Commands (all slash commands — the `!`-prefixed versions are gone)
 
@@ -79,7 +97,7 @@ Customer-facing:
 | Command | Effect |
 |---------|--------|
 | `/ask <question>` | AI support answer (also reachable via the welcome button) |
-| `/price <product>` | Price lookup |
+| `/price <product>` | Price lookup (live catalogue, no stock shown) |
 | `/payment <code>` | Submit a gift card for manual verification |
 | `/version` | Running bot version |
 
@@ -92,6 +110,7 @@ Staff only (checked at runtime against `STAFF_ROLE_ID`):
 | `/resume` | Re-enables bot |
 | `/learn <answer>` | Saves Q&A to knowledge base, sends answer to customer |
 | `/bad <answer>` | Deletes the bot's last answer, saves the correction instead |
+| `/stock <product>` | Remaining key count — the only place stock is exposed |
 | `/rule`, `/rules`, `/rule-del <id>` | Behaviour rules — restricted to `TRAINING_CHANNEL_ID` |
 
 `/learn` and `/bad` read the customer's last question from `conversationLog.js`, so the

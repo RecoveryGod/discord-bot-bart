@@ -39,6 +39,12 @@ export const DOCS_EMBED_ON_BOOT = process.env.DOCS_EMBED_ON_BOOT === "true";
 export const BATCH_WAIT_MS = parseInt(process.env.BATCH_WAIT_MS ?? "3000", 10);
 export const BATCH_MAX_WAIT_MS = parseInt(process.env.BATCH_MAX_WAIT_MS ?? "15000", 10);
 
+// Live product catalogue served by the eldro-catalogue mu-plugin on the shop.
+// Absent values simply disable the catalogue; the bot still boots.
+export const ELDRO_CATALOGUE_URL = process.env.ELDRO_CATALOGUE_URL?.trim() ?? "";
+export const ELDRO_CATALOGUE_TOKEN = process.env.ELDRO_CATALOGUE_TOKEN?.trim() ?? "";
+export const CATALOGUE_REFRESH_MS = parseInt(process.env.CATALOGUE_REFRESH_MS ?? "300000", 10);
+
 export function loadConfig() {
   validate();
   return {

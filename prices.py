@@ -1,3 +1,8 @@
+# ⚠️  NO LONGER READ BY THE BOT (since v3.1.0).
+# Prices and products now come live from https://eldromods.com/wp-json/eldro/v1/catalogue
+# via src/services/catalogueService.js. Editing this file has NO effect.
+# Kept only as a historical snapshot; change prices in WooCommerce instead.
+
 # Fixed selling price per unit (€) – auto-synced from WooCommerce API (status=publish only).
 # Sale price preferred over regular price. Non-published products excluded.
 # Last updated: 2026-07-17

@@ -1,6 +1,6 @@
 import { OPENAI_API_KEY } from "../config.js";
 import { searchFAQ, formatFAQContext, FAQ_MIN_SCORE } from "./knowledgeBase.js";
-import { searchPrices, formatPriceContext } from "./priceService.js";
+import { searchCatalogue, formatCatalogueContext } from "./catalogueService.js";
 import { formatRulesForPrompt } from "./rulesService.js";
 import { searchDocs, formatDocsContext } from "./docsService.js";
 import { redactGiftCardCodes } from "../utils/redact.js";
@@ -24,26 +24,17 @@ Your role is to assist users professionally and clearly with:
 6. Escalating to a human staff member when necessary
 
 -----------------------------------------
-PRODUCTS WE SELL
+PRODUCTS
 -----------------------------------------
 
-GTA V / GTA Online: Stand, Atlas, Lexis, 0xCheats, Midnight, Infamous, Fortitude, X-Force, Raiden, Rebound, Phaze, Scooby, Ethereal, Jupiter
-FiveM: redENGINE (Lua Executor, Spoofer), Infamous, Rift
-CS2 (Counter-Strike 2): Midnight, MemeSense, Predator, Nixware, Kernaim, Fecurity
-CS 1.6: Midnight
-Apex Legends: Lexis, Kernaim
-RDR2 (Red Dead Redemption 2): Fortitude, Infamous, Ethereal, Rift
-Call of Duty (BO6, BO7, Warzone, MW2, MW3): Fecurity, Kernaim
-Deadlock: Predator
-Marvel Rivals: Predator
-ARC Raiders: Kernaim, Fecurity
-Battlefield: Kernaim, Fecurity
-Rust: Kernaim
-Escape from Tarkov: Kernaim
-DayZ: Kernaim
-Other: Cherax, Fragment, Hares
+You have NO memorised product list. The only products that exist are the ones listed in
+the "Live catalogue" section of the message you are answering.
 
-Do NOT invent product details not present in the knowledge base or price list.
+- Never state a price, product name or subscription length that is not in that section.
+- If the customer asks about something absent from the catalogue, say you cannot find it
+  and that a human will check. Do NOT guess, and do NOT claim it does not exist.
+- Never mention stock levels or availability — that is staff-only information.
+- Quote prices exactly as written, in the catalogue's currency.
 
 -----------------------------------------
 BEHAVIOR RULES
@@ -168,7 +159,7 @@ async function fetchThreadHistory(channel) {
  * Calls OpenAI API to generate a support response.
  * Returns { answer: string, confidence: number } or null on error.
  */
-export async function generateAIResponse(userMessage, faqContext, { history = [], isRetry = false, priceContext = null, docsContext = null } = {}) {
+export async function generateAIResponse(userMessage, faqContext, { history = [], isRetry = false, catalogueContext = null, docsContext = null } = {}) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY not configured");
   }
@@ -180,7 +171,7 @@ export async function generateAIResponse(userMessage, faqContext, { history = []
     ? "\n- RETRY: Your previous attempt had low confidence. Provide the most helpful answer you can based on the knowledge base, even if partial. Only set confidence < 0.6 if the topic is truly outside your knowledge base."
     : "";
 
-  const priceSection = priceContext ? `\n\n${priceContext}` : "";
+  const catalogueSection = catalogueContext ? `\n\n${catalogueContext}` : "";
   const docsSection = docsContext ? `\n\nDocumentation (supporting context, lower priority than FAQ):\n${docsContext}` : "";
 
   // Build system content dynamically: base prompt + staff-defined rules + JSON-format reminder.
@@ -201,7 +192,7 @@ export async function generateAIResponse(userMessage, faqContext, { history = []
     ...history,
     {
       role: "user",
-      content: `Knowledge Base (authoritative):\n${faqContext}${priceSection}${docsSection}\n\nCustomer Question: ${safeMessage}${retryInstruction}`,
+      content: `Knowledge Base (authoritative):\n${faqContext}${catalogueSection}${docsSection}\n\nCustomer Question: ${safeMessage}${retryInstruction}`,
     },
   ];
 
@@ -290,25 +281,25 @@ export async function handleAISupport(userMessage, { history = [] } = {}) {
   // searchDocs is async (embedding API); FAQ/prices are sync but Promise.all is fine.
   const [{ entries: relevantFAQ, bestScore }, matchedPrices, docs] = await Promise.all([
     Promise.resolve(searchFAQ(safeMessage)),
-    Promise.resolve(searchPrices(safeMessage)),
+    Promise.resolve(searchCatalogue(safeMessage)),
     searchDocs(safeMessage).catch((err) => {
       logger.error("searchDocs failed:", err?.message);
       return [];
     }),
   ]);
-  const priceContext = formatPriceContext(matchedPrices);
+  const catalogueContext = formatCatalogueContext(matchedPrices);
   const docsContext = formatDocsContext(docs);
 
-  if (priceContext) {
-    logger.info("Price context found —", matchedPrices.length, "product(s) matched");
+  if (catalogueContext) {
+    logger.info("Catalogue context found —", matchedPrices.length, "product(s) matched");
   }
   if (docsContext) {
     logger.info("Docs context found —", docs.length, "chunk(s) matched");
   }
 
   // Only skip the AI call if there is truly zero match across FAQ, prices, AND docs.
-  if (bestScore === 0 && !priceContext && !docsContext) {
-    logger.info("Zero FAQ/price/docs match — escalating directly");
+  if (bestScore === 0 && !catalogueContext && !docsContext) {
+    logger.info("Zero FAQ/catalogue/docs match — escalating directly");
     return {
       answer: "A human support agent will assist you shortly.",
       confidence: 0,
@@ -319,12 +310,12 @@ export async function handleAISupport(userMessage, { history = [] } = {}) {
   const faqContext = formatFAQContext(relevantFAQ);
 
   // First attempt
-  const result = await generateAIResponse(safeMessage, faqContext, { history, isRetry: false, priceContext, docsContext });
+  const result = await generateAIResponse(safeMessage, faqContext, { history, isRetry: false, catalogueContext, docsContext });
 
   // If confidence is too low, retry once before escalating
   if (result.confidence < 0.6) {
     logger.info("Low confidence on first attempt:", result.confidence.toFixed(2), "— retrying...");
-    const retry = await generateAIResponse(safeMessage, faqContext, { history, isRetry: true, priceContext, docsContext });
+    const retry = await generateAIResponse(safeMessage, faqContext, { history, isRetry: true, catalogueContext, docsContext });
     logger.info("Retry confidence:", retry.confidence.toFixed(2));
     return retry;
   }

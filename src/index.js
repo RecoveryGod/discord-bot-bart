@@ -20,7 +20,12 @@ import { handleAISupport } from "./services/aiService.js";
 import { updateStaffActivity, isThreadPaused, pauseThread, pauseThreadIndefinitely, resumeThread } from "./services/staffActivity.js";
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
 import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking, startIdleTracking, recordActivity, stopIdleTracking, getThreadsToWarn, getThreadsToClose, markWarningSent } from "./services/threadInactivity.js";
-import { searchPrices } from "./services/priceService.js";
+import {
+  searchCatalogue,
+  startCatalogueRefresh,
+  getCatalogueMeta,
+  hasCatalogue,
+} from "./services/catalogueService.js";
 import { appendLearnedEntry } from "./services/knowledgeBase.js";
 import { extractCoreQuestion } from "./services/questionExtractor.js";
 import {
@@ -220,6 +225,9 @@ async function runAISupport(interaction, question) {
 client.on("ready", async () => {
   logger.info(`Bot v${BOT_VERSION} prêt, guilds:`, client.guilds.cache.size);
 
+  // Load the catalogue from disk, refresh it now, then keep it fresh in the background.
+  startCatalogueRefresh();
+
   // Optionally pre-warm the docs embedding index on boot (otherwise lazy on first query)
   if (DOCS_EMBED_ON_BOOT) {
     ensureDocsIndex().catch((err) => {
@@ -311,6 +319,13 @@ client.on("ready", async () => {
           description: "[Staff] Add a behaviour rule applied to every AI reply",
           options: [
             { name: "instruction", description: "e.g. Always reply in Spanish when the user writes Spanish", type: STRING, required: true },
+          ],
+        },
+        {
+          name: "stock",
+          description: "[Staff] Check how many keys are left for a product",
+          options: [
+            { name: "product", description: "Product name to look up", type: STRING, required: true },
           ],
         },
         { name: "rules", description: "[Staff] List all behaviour rules" },
@@ -482,12 +497,17 @@ client.on("interactionCreate", async (interaction) => {
       logger.info("/price by:", interaction.user.tag, "| query:", query);
       await interaction.deferReply();
 
-      const results = searchPrices(query);
+      if (!hasCatalogue()) {
+        return interaction.editReply("The product catalogue is temporarily unavailable. A human agent will help you shortly.");
+      }
+
+      const results = searchCatalogue(query);
       if (results.length === 0) {
         return interaction.editReply(
-          `No products found matching **${query}**. Try a different name (e.g. \`Stand GTA\`, \`2take1 Lifetime\`, \`Kernaim CS2\`).`
+          `No products found matching **${query}**. Try a different name (e.g. \`Stand GTA\`, \`MemeSense CS2\`, \`Kernaim\`).`
         );
       }
+      // Customers see prices only — stock is staff-only, via /stock.
       const lines = results.map((p) => `• **${p.name}** — €${p.price.toFixed(2)}`);
       await interaction.editReply(`**Price results for "${query}":**\n${lines.join("\n")}`);
       logger.info("/price reply sent —", results.length, "result(s)");
@@ -541,9 +561,34 @@ client.on("interactionCreate", async (interaction) => {
 
     // ================= Staff commands =================
 
-    const STAFF_COMMANDS = ["learn", "bad", "pause", "mute", "resume", "rule", "rules", "rule-del"];
+    const STAFF_COMMANDS = ["learn", "bad", "stock", "pause", "mute", "resume", "rule", "rules", "rule-del"];
     if (STAFF_COMMANDS.includes(name) && !isStaffInteraction(interaction)) {
       return ephemeral(interaction, "This command is restricted to support staff.");
+    }
+
+    if (name === "stock") {
+      const query = interaction.options.getString("product");
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      if (!hasCatalogue()) {
+        const meta = getCatalogueMeta();
+        return interaction.editReply(`Catalogue unavailable${meta.lastError ? ` — last error: ${meta.lastError}` : ""}.`);
+      }
+
+      const results = searchCatalogue(query);
+      if (results.length === 0) {
+        return interaction.editReply(`No products found matching **${query}**.`);
+      }
+
+      const lines = results.map((p) =>
+        `• **${p.name}** — €${p.price.toFixed(2)} · ${p.stock > 0 ? `**${p.stock}** key(s)` : "**out of stock**"}`
+      );
+      const meta = getCatalogueMeta();
+      await interaction.editReply(
+        `**Stock for "${query}":**\n${lines.join("\n")}\n\n*Catalogue generated ${meta.generatedAt ?? "?"}*`
+      );
+      logger.info("/stock by:", interaction.user.tag, "| query:", query, "|", results.length, "result(s)");
+      return;
     }
 
     if (name === "learn" || name === "bad") {

@@ -2,3 +2,6 @@ node_modules/
 .env
 .env.local
 .env.*.local
+
+# Runtime catalogue cache (refreshed from the shop API on boot)
+data/catalogue-cache.json
