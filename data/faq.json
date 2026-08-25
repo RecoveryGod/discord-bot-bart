@@ -31,27 +31,27 @@
     },
     {
       "question": "Do you accept Amazon gift card payments?",
-      "answer": "You can pay directly on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
+      "answer": "You can pay directly on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["amazon", "gift card", "amazon payment", "card payment"]
     },
     {
       "question": "Do you accept Paypal payments?",
-      "answer": "We don't accept PayPal payments directly. You can pay on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
+      "answer": "We don't accept PayPal payments directly. You can pay on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": [ "PayPal", "venmo", "eneba", "g2a"]
     },
     {
       "question": "How to buy menu ?",
-      "answer": "To purchase the menu, please confirm which product you want and your preferred payment method. Once confirmed, we will provide you with the correct purchase instructions. You can also buy directly on our website using card or crypto: https://recoverygods.xyz",
+      "answer": "To purchase the menu, please confirm which product you want and your preferred payment method. Once confirmed, we will provide you with the correct purchase instructions. You can also buy directly on our website using card or crypto: https://eldromods.com",
       "keywords": ["how to buy", "where to buy", "buy menu", "purchase"]
     },
     {
       "question": "What payment method do have?",
-      "answer": "We currently support credit/debit cards and cryptocurrency directly on our website: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
+      "answer": "We currently support credit/debit cards and cryptocurrency directly on our website: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["payment method", "how to pay", "pay with", "available payment"]
     },
     {
       "question": "Can I buy with a Google Play gift card?",
-      "answer": "We do not accept Google Play gift cards. You can purchase securely on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
+      "answer": "We do not accept Google Play gift cards. You can purchase securely on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["google play gift card", "google gift card", "google play payment"]
     },
     {
@@ -61,7 +61,7 @@
     },
     {
       "question": "Do you accept PayPal?",
-      "answer": "We do not accept PayPal directly. You can pay on our website using credit/debit card or cryptocurrency: https://recoverygods.xyz\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
+      "answer": "We do not accept PayPal directly. You can pay on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
       "keywords": ["paypal", "venmo", "alternative payment"]
     },
     {

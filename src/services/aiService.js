@@ -10,9 +10,9 @@ const MODEL = "gpt-4o";
 const TEMPERATURE = 0.1;
 const MAX_TOKENS = 1000;
 
-const SYSTEM_PROMPT = `You are the official automated support assistant for the RecoveryGods Discord server.
+const SYSTEM_PROMPT = `You are the official automated support assistant for the EldroMods Discord server.
 
-RecoveryGods sells authorized game modification software licenses.
+EldroMods sells authorized game modification software licenses.
 
 Your role is to assist users professionally and clearly with:
 

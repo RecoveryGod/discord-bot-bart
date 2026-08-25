@@ -23,7 +23,7 @@ Au-dessus du seuil → la demande doit être soumise, les toggles seuls ne suffi
 **Que fait ton application ?**
 
 ```
-RecoveryGods Support is a private, single-server customer support automation bot.
+EldroMods Support is a private, single-server customer support automation bot.
 It operates exclusively inside support ticket threads on our own Discord server.
 
 What it does:
@@ -57,7 +57,7 @@ and is not listed publicly. It is installed on one server only.
 **As-tu une Politique de Confidentialité publique ?**
 
 > ⚠️ À VÉRIFIER — réponds "Oui" **uniquement** si une politique de confidentialité est
-> réellement en ligne et accessible publiquement (ex. https://recoverygods.xyz/privacy).
+> réellement en ligne et accessible publiquement (ex. https://eldromods.com/privacy).
 > Si elle n'existe pas, il faut la publier avant de soumettre. Elle doit mentionner :
 > les messages des tickets sont traités par l'API OpenAI, les paires question/réponse
 > validées par le staff sont conservées sur nos serveurs, la durée de conservation,

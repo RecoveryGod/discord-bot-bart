@@ -1,6 +1,6 @@
 # Discord Bot Bart
 
-Discord support bot (Node.js, discord.js v14) for the RecoveryGods server. Handles Amazon gift card detection, AI-powered ticket support (FAQ + OpenAI + price lookup), staff controls, and ticket lifecycle management.
+Discord support bot (Node.js, discord.js v14) for the EldroMods server. Handles Amazon gift card detection, AI-powered ticket support (FAQ + OpenAI + price lookup), staff controls, and ticket lifecycle management.
 
 ---
 
