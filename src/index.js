@@ -11,6 +11,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   MessageFlags,
+  SnowflakeUtil,
 } from "discord.js";
 import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS, TRAINING_CHANNEL_ID, DOCS_EMBED_ON_BOOT, BOT_VERSION } from "./config.js";
 import { sendPaymentNotification } from "./services/notification.js";
@@ -19,7 +20,7 @@ import { checkRateLimit } from "./services/rateLimiter.js";
 import { handleAISupport } from "./services/aiService.js";
 import { updateStaffActivity, isThreadPaused, pauseThread, pauseThreadIndefinitely, resumeThread } from "./services/staffActivity.js";
 import { shouldSkipDuplicateReply, recordBotMessage } from "./services/messageDeduplication.js";
-import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking, startIdleTracking, recordActivity, stopIdleTracking, getThreadsToWarn, getThreadsToClose, markWarningSent } from "./services/threadInactivity.js";
+import { trackThread, onMessageInThread, getThreadsToPrompt, markAsAsked, stopTracking, startIdleTracking, recordActivity, stopIdleTracking, getThreadsToWarn, getThreadsToClose, markWarningSent, isIdleTracked, idleTrackedCount } from "./services/threadInactivity.js";
 import {
   searchCatalogue,
   startCatalogueRefresh,
@@ -61,6 +62,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
   ],
 });
+
+// Max auto-close warnings/closures per 15s cycle, so a backlog drains without flooding.
+const AUTO_CLOSE_BATCH = 5;
 
 const INACTIVITY_PROMPT_MESSAGE =
   "Could you please specify why you opened this ticket? This will help us assist you.";
@@ -224,8 +228,46 @@ async function runAISupport(interaction, question) {
   }
 }
 
+/**
+ * Picks up ticket threads that already existed before this process started.
+ *
+ * Idle tracking lives in memory, so every deploy used to drop the entire backlog and
+ * nothing was ever auto-closed. Here we enumerate the guild's active threads and seed
+ * each one with its real last-message time, derived from the message snowflake.
+ */
+async function seedIdleTrackingFromDiscord() {
+  if (!TICKET_CHANNEL_ID) return;
+  try {
+    const parent = await client.channels.fetch(TICKET_CHANNEL_ID).catch(() => null);
+    const guild = parent?.guild ?? client.guilds.cache.first();
+    if (!guild) {
+      logger.error("[Idle] Guild introuvable — pas de reprise des tickets existants");
+      return;
+    }
+
+    const { threads } = await guild.channels.fetchActiveThreads();
+    let seeded = 0;
+    for (const [, thread] of threads) {
+      if (thread.parentId !== TICKET_CHANNEL_ID) continue;
+      if (thread.archived || thread.locked) continue;
+      if (isIdleTracked(thread.id)) continue;
+
+      // lastMessageId is absent on an empty thread; its own id carries the creation time.
+      const stamp = SnowflakeUtil.timestampFrom(thread.lastMessageId ?? thread.id);
+      startIdleTracking(thread.id, new Date(stamp));
+      seeded++;
+    }
+    logger.info(`[Idle] ${seeded} ticket(s) existant(s) repris — ${idleTrackedCount()} suivi(s) au total`);
+  } catch (err) {
+    logger.error("[Idle] Reprise des tickets existants échouée:", err?.message);
+  }
+}
+
 client.on("ready", async () => {
   logger.info(`Bot v${BOT_VERSION} prêt, guilds:`, client.guilds.cache.size);
+
+  // Pick up tickets opened before this process started (in-memory tracking, see above).
+  await seedIdleTrackingFromDiscord();
 
   // Load the catalogue from disk, refresh it now, then keep it fresh in the background.
   startCatalogueRefresh();
@@ -390,8 +432,9 @@ client.on("ready", async () => {
       }
     }
 
-    // Auto-close idle tickets
-    for (const threadId of getThreadsToWarn(AUTO_CLOSE_HOURS)) {
+    // Auto-close idle tickets. Capped per cycle: seeding a backlog of ~80 stale tickets
+    // would otherwise fire that many messages in one tick and hit Discord's rate limits.
+    for (const threadId of getThreadsToWarn(AUTO_CLOSE_HOURS).slice(0, AUTO_CLOSE_BATCH)) {
       try {
         const thread = await client.channels.fetch(threadId);
         if (!thread || thread.archived || thread.locked) {
@@ -405,7 +448,7 @@ client.on("ready", async () => {
       }
     }
 
-    for (const threadId of getThreadsToClose()) {
+    for (const threadId of getThreadsToClose().slice(0, AUTO_CLOSE_BATCH)) {
       try {
         const thread = await client.channels.fetch(threadId);
         if (!thread || thread.archived) {

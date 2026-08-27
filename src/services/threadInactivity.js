@@ -84,13 +84,28 @@ export function stopTracking(threadId) {
 }
 
 /**
- * Start idle tracking for a thread (called when a ticket is created).
+ * Start idle tracking for a thread.
+ *
+ * `lastActivityAt` defaults to now (a ticket just created). On boot, index.js passes the
+ * thread's real last-message time so pre-existing tickets are picked up too: this map is
+ * in-memory, so without that seeding every restart silently dropped the whole backlog.
  */
-export function startIdleTracking(threadId) {
+export function startIdleTracking(threadId, lastActivityAt = new Date()) {
+  const at = lastActivityAt instanceof Date ? lastActivityAt : new Date(lastActivityAt);
   idleThreads.set(threadId, {
-    lastActivityAt: new Date(),
+    lastActivityAt: Number.isNaN(at.getTime()) ? new Date() : at,
     warningSentAt: null,
   });
+}
+
+/** True when this thread is already being watched (used to avoid re-seeding on boot). */
+export function isIdleTracked(threadId) {
+  return idleThreads.has(threadId);
+}
+
+/** How many threads are currently watched — surfaced in the boot log. */
+export function idleTrackedCount() {
+  return idleThreads.size;
 }
 
 /**
