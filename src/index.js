@@ -118,6 +118,25 @@ function extractTicketBotInquiry(content, embeds = []) {
   return null;
 }
 
+/**
+ * Discord codes meaning a thread can never be acted on again: Tickety deletes threads
+ * when a ticket is closed, and the bot can lose access to a private one.
+ *
+ * Without evicting these, the tracker retried them every 15s forever. Combined with the
+ * per-cycle cap they sat at the head of the queue and starved every live ticket —
+ * 177k error lines and zero warnings sent over two weeks.
+ */
+const GONE_CODES = new Set([10003 /* Unknown Channel */, 50001 /* Missing Access */]);
+
+function dropIfGone(threadId, err, context) {
+  if (!GONE_CODES.has(err?.code)) return false;
+  stopIdleTracking(threadId);
+  stopTracking(threadId);
+  clearThread(threadId);
+  logger.info(`[Idle] ${context}: thread ${threadId} inaccessible (code ${err.code}) — retiré du suivi`);
+  return true;
+}
+
 /** True when the channel is a thread under the configured ticket channel. */
 function isTicketThread(channel) {
   return Boolean(channel?.isThread?.() && channel.parentId === TICKET_CHANNEL_ID);
@@ -428,6 +447,7 @@ client.on("ready", async () => {
           logger.info("Inactivity prompt sent — thread:", threadId);
         }
       } catch (err) {
+        if (dropIfGone(threadId, err, "prompt")) continue;
         logger.error("Failed to send inactivity prompt:", err?.message, "thread:", threadId);
       }
     }
@@ -444,6 +464,7 @@ client.on("ready", async () => {
         await thread.send(`⚠️ This ticket has been inactive for ${AUTO_CLOSE_HOURS} hours. It will be automatically closed in 24 hours unless you reply.`);
         markWarningSent(threadId);
       } catch (err) {
+        if (dropIfGone(threadId, err, "warn")) continue;
         logger.error(`Auto-close warning failed for ${threadId}: ${err.message}`);
       }
     }
@@ -459,6 +480,7 @@ client.on("ready", async () => {
         await thread.setArchived(true);
         stopIdleTracking(threadId);
       } catch (err) {
+        if (dropIfGone(threadId, err, "close")) continue;
         logger.error(`Auto-close failed for ${threadId}: ${err.message}`);
       }
     }
