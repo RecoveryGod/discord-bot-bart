@@ -1,172 +1,319 @@
-  [
-    {
-      "question": "How do I activate my license key?",
-      "answer": "Open the loader software, go to the activation section, paste your key exactly as received (no extra spaces), and click activate. Make sure you are connected to the internet during activation.",
-      "keywords": ["activate", "activation", "license key", "redeem key", "how to activate"]
-    },
-    {
-      "question": "My key says invalid.",
-      "answer": "Please double-check that you copied the key exactly as provided. Remove any extra spaces before or after the key. Restart the loader and try again. If the issue persists, a human support agent will review your case.",
-      "keywords": ["invalid key", "wrong key", "activation failed", "key not working"]
-    },
-    {
-      "question": "My key says already used.",
-      "answer": "Keys are linked to the first account that activates them. Please ensure you are logged into the correct account. If you believe this is an error, a support agent will investigate.",
-      "keywords": ["already used", "key used", "linked account", "license used"]
-    },
-    {
-      "question": "I purchased but did not receive my key.",
-      "answer": "Keys are delivered automatically after payment confirmation. Please check your email and spam folder. If you still cannot find it, a support agent will verify your purchase.",
-      "keywords": ["no key", "missing key", "did not receive", "purchase issue"]
-    },
-    {
-      "question": "How long does payment verification take?",
-      "answer": "Payment verification usually takes a short time. Some payment methods require manual verification. Please allow staff some time to review your transaction.",
-      "keywords": ["verification time", "payment delay", "pending payment"]
-    },
-    {
-      "question": "My payment is pending.",
-      "answer": "If your payment is pending, please wait for confirmation from the payment provider. Once confirmed, your license will be delivered automatically.",
-      "keywords": ["pending", "transaction pending", "not confirmed"]
-    },
-    {
-      "question": "Do you accept Amazon gift card payments?",
-      "answer": "You can pay directly on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
-      "keywords": ["amazon", "gift card", "amazon payment", "card payment"]
-    },
-    {
-      "question": "Do you accept Paypal payments?",
-      "answer": "We don't accept PayPal payments directly. You can pay on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
-      "keywords": [ "PayPal", "venmo", "eneba", "g2a"]
-    },
-    {
-      "question": "How to buy menu ?",
-      "answer": "To purchase the menu, please confirm which product you want and your preferred payment method. Once confirmed, we will provide you with the correct purchase instructions. You can also buy directly on our website using card or crypto: https://eldromods.com",
-      "keywords": ["how to buy", "where to buy", "buy menu", "purchase"]
-    },
-    {
-      "question": "What payment method do have?",
-      "answer": "We currently support credit/debit cards and cryptocurrency directly on our website: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
-      "keywords": ["payment method", "how to pay", "pay with", "available payment"]
-    },
-    {
-      "question": "Can I buy with a Google Play gift card?",
-      "answer": "We do not accept Google Play gift cards. You can purchase securely on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
-      "keywords": ["google play gift card", "google gift card", "google play payment"]
-    },
-    {
-      "question": "Why has my Amazon gift card not been validated?",
-      "answer": "Amazon gift cards require manual verification. Please allow some time for our team to review your submission. Do not resend the full code publicly.",
-      "keywords": ["gift card delay", "not validated", "manual verification"]
-    },
-    {
-      "question": "Do you accept PayPal?",
-      "answer": "We do not accept PayPal directly. You can pay on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
-      "keywords": ["paypal", "venmo", "alternative payment"]
-    },
-    {
-      "question": "Can I get a refund?",
-      "answer": "Refund eligibility depends on the specific circumstances of your purchase. A human support agent will review your request.",
-      "keywords": ["refund", "money back", "cancel purchase"]
-    },
-    {
-      "question": "I sent the wrong amount.",
-      "answer": "If you sent an incorrect amount, please wait for staff review. We will verify the transaction and provide further instructions.",
-      "keywords": ["wrong amount", "incorrect payment", "payment mistake"]
-    },
-    {
-      "question": "Is the software safe to use?",
-      "answer": "Yes, the software is authorized by the respective game publishers. It is safe when downloaded from official sources.",
-      "keywords": ["safe", "virus", "legal", "authorized"]
-    },
-    {
-      "question": "Is this software allowed by the game developers?",
-      "answer": "Yes, the mod software we provide is authorized by the respective game publishers.",
-      "keywords": ["allowed", "legal", "publisher approved"]
-    },
-    {
-      "question": "The software is crashing.",
-      "answer": "For technical issues such as crashes, please contact the official software Discord or Telegram. They provide direct technical support.",
-      "keywords": ["crash", "not launching", "software crash"]
-    },
-    {
-      "question": "I am getting an error code.",
-      "answer": "Please contact the official software support Discord or Telegram and provide the exact error message for faster assistance.",
-      "keywords": ["error code", "launch error", "problem opening"]
-    },
-    {
-      "question": "My antivirus is blocking the loader.",
-      "answer": "Some antivirus programs may flag modding software incorrectly. Please contact official software support for guidance on proper configuration.",
-      "keywords": ["antivirus", "blocked", "defender", "security warning"]
-    },
-    {
-      "question": "How long is my license valid?",
-      "answer": "License duration depends on the product purchased (monthly, lifetime, etc.). Please check your purchase details or ask support for verification.",
-      "keywords": ["license duration", "validity", "expire"]
-    },
-    {
-      "question": "Can I transfer my license to another account?",
-      "answer": "Licenses are usually linked to the first account that activates them and cannot be transferred. Contact support if you believe there is an exception.",
-      "keywords": ["transfer license", "change account", "move key"]
-    },
-    {
-      "question": "Where do I download the software?",
-      "answer": "Download links are provided after purchase. Always download from the official source provided in your purchase confirmation.",
-      "keywords": ["download", "where to download", "loader link"]
-    },
-    {
-      "question": "I lost my key.",
-      "answer": "If you lost your key, please provide proof of purchase. A support agent will verify your transaction and assist you.",
-      "keywords": ["lost key", "missing license", "recover key"]
-    },
-    {
-      "question": "Can I use the mod on multiple accounts?",
-      "answer": "License usage depends on the product purchased. Most licenses are tied to a single account.",
-      "keywords": ["multiple accounts", "use on two accounts", "shared license"]
-    },
-    {
-      "question": "Can I use the software on multiple PCs?",
-      "answer": "Most licenses are tied to your account rather than your device. However, please check your product details for specific restrictions.",
-      "keywords": ["multiple pc", "two computers", "device limit"]
-    },
-    {
-      "question": "Why is my order taking so long?",
-      "answer": "Most orders are processed automatically. If there is a delay, it may require manual verification. Please allow some time for review.",
-      "keywords": ["order delay", "taking long", "waiting order"]
-    },
-    {
-      "question": "The website is not loading.",
-      "answer": "Please try clearing your browser cache or using another browser. If the issue persists, inform support.",
-      "keywords": ["website down", "not loading", "site error"]
-    },
-    {
-      "question": "I sent the gift card code but no response.",
-      "answer": "Gift card payments require manual verification. Please wait for staff review and avoid resending the code publicly.",
-      "keywords": ["no response", "waiting verification", "sent code"]
-    },
-    {
-      "question": "Can I upgrade my license?",
-      "answer": "Upgrade options depend on the product. Please contact support with your current license details.",
-      "keywords": ["upgrade", "change plan", "upgrade license"]
-    },
-    {
-      "question": "Do you offer lifetime licenses?",
-      "answer": "License types depend on the product available at the time of purchase. Please check the product description.",
-      "keywords": ["lifetime", "permanent license", "forever access"]
-    },
-    {
-      "question": "I have a technical problem not listed here.",
-      "answer": "For technical issues, please contact the official software Discord or Telegram for specialized assistance.",
-      "keywords": ["technical issue", "bug", "problem not listed"]
-    },
-    {
-      "question": "I have another question.",
-      "answer": "If your question is not related to activation, payment, or access, a human support agent will assist you shortly.",
-      "keywords": ["other issue", "different problem", "need help"]
-    },
-    {
-      "question": "How do I contact human support?",
-      "answer": "If the bot cannot fully resolve your issue, please wait in this ticket. A human support agent will assist you as soon as possible.",
-      "keywords": ["human support", "real person", "talk to admin"]
-    }
-  ]
+[
+  {
+    "question": "How do I activate my license key?",
+    "answer": "Open the loader software, go to the activation section, paste your key exactly as received (no extra spaces), and click activate. Make sure you are connected to the internet during activation.",
+    "keywords": [
+      "activate",
+      "activation",
+      "license key",
+      "redeem key",
+      "how to activate"
+    ]
+  },
+  {
+    "question": "My key says invalid.",
+    "answer": "Please double-check that you copied the key exactly as provided. Remove any extra spaces before or after the key. Restart the loader and try again. If the issue persists, a human support agent will review your case.",
+    "keywords": [
+      "invalid key",
+      "wrong key",
+      "activation failed",
+      "key not working"
+    ]
+  },
+  {
+    "question": "My key says already used.",
+    "answer": "Keys are linked to the first account that activates them. Please ensure you are logged into the correct account. If you believe this is an error, a support agent will investigate.",
+    "keywords": [
+      "already used",
+      "key used",
+      "linked account",
+      "license used"
+    ]
+  },
+  {
+    "question": "I purchased but did not receive my key.",
+    "answer": "Keys are delivered automatically after payment confirmation. Please check your email and spam folder. If you still cannot find it, a support agent will verify your purchase.",
+    "keywords": [
+      "no key",
+      "missing key",
+      "did not receive",
+      "purchase issue"
+    ]
+  },
+  {
+    "question": "How long does payment verification take?",
+    "answer": "Payment verification usually takes a short time. Some payment methods require manual verification. Please allow staff some time to review your transaction.",
+    "keywords": [
+      "verification time",
+      "payment delay",
+      "pending payment"
+    ]
+  },
+  {
+    "question": "My payment is pending.",
+    "answer": "If your payment is pending, please wait for confirmation from the payment provider. Once confirmed, your license will be delivered automatically.",
+    "keywords": [
+      "pending",
+      "transaction pending",
+      "not confirmed"
+    ]
+  },
+  {
+    "question": "Do you accept Amazon gift card payments?",
+    "answer": "You can pay directly on our website using credit/debit card or cryptocurrency: https://eldromods.com\n\nFor any other payment method, please wait for a staff member to assist you in this ticket.",
+    "keywords": [
+      "amazon",
+      "gift card",
+      "amazon payment",
+      "card payment"
+    ]
+  },
+  {
+    "question": "Do you accept Paypal payments?",
+    "answer": "Yes, we accept PayPal. Send your PayPal email address and the product you want in this ticket, and a staff member will handle the payment manually — just wait for them to assist you.\n\nYou can also pay instantly on our website with credit/debit card or cryptocurrency: https://eldromods.com",
+    "keywords": [
+      "paypal",
+      "pay pal",
+      "venmo"
+    ]
+  },
+  {
+    "question": "How to buy menu ?",
+    "answer": "To purchase the menu, please confirm which product you want and your preferred payment method. Once confirmed, we will provide you with the correct purchase instructions. You can also buy directly on our website using card or crypto: https://eldromods.com",
+    "keywords": [
+      "how to buy",
+      "where to buy",
+      "buy menu",
+      "purchase"
+    ]
+  },
+  {
+    "question": "What payment method do have?",
+    "answer": "We accept credit/debit cards and cryptocurrency directly on our website: https://eldromods.com\n\nWe also accept PayPal in this ticket: send your PayPal email address and the product you want, and a staff member will handle it manually.\n\nFor any other payment method, please wait for a staff member to assist you.",
+    "keywords": [
+      "payment method",
+      "how to pay",
+      "pay with",
+      "available payment"
+    ]
+  },
+  {
+    "question": "Can I buy with a Google Play gift card?",
+    "answer": "We do not accept Google Play gift cards. You can pay on our website with credit/debit card or cryptocurrency: https://eldromods.com\n\nYou can also pay with PayPal in this ticket: send your PayPal email address and the product you want, and a staff member will handle it manually.",
+    "keywords": [
+      "google play gift card",
+      "google gift card",
+      "google play payment"
+    ]
+  },
+  {
+    "question": "Why has my Amazon gift card not been validated?",
+    "answer": "Amazon gift cards require manual verification. Please allow some time for our team to review your submission. Do not resend the full code publicly.",
+    "keywords": [
+      "gift card delay",
+      "not validated",
+      "manual verification"
+    ]
+  },
+  {
+    "question": "Do you accept PayPal?",
+    "answer": "Yes, we accept PayPal. Send your PayPal email address and the product you want in this ticket, and a staff member will handle the payment manually — just wait for them to assist you.\n\nYou can also pay instantly on our website with credit/debit card or cryptocurrency: https://eldromods.com",
+    "keywords": [
+      "paypal",
+      "pay pal",
+      "venmo",
+      "alternative payment"
+    ]
+  },
+  {
+    "question": "Can I get a refund?",
+    "answer": "Refund eligibility depends on the specific circumstances of your purchase. A human support agent will review your request.",
+    "keywords": [
+      "refund",
+      "money back",
+      "cancel purchase"
+    ]
+  },
+  {
+    "question": "I sent the wrong amount.",
+    "answer": "If you sent an incorrect amount, please wait for staff review. We will verify the transaction and provide further instructions.",
+    "keywords": [
+      "wrong amount",
+      "incorrect payment",
+      "payment mistake"
+    ]
+  },
+  {
+    "question": "Is the software safe to use?",
+    "answer": "Yes, the software is authorized by the respective game publishers. It is safe when downloaded from official sources.",
+    "keywords": [
+      "safe",
+      "virus",
+      "legal",
+      "authorized"
+    ]
+  },
+  {
+    "question": "Is this software allowed by the game developers?",
+    "answer": "Yes, the mod software we provide is authorized by the respective game publishers.",
+    "keywords": [
+      "allowed",
+      "legal",
+      "publisher approved"
+    ]
+  },
+  {
+    "question": "The software is crashing.",
+    "answer": "For technical issues such as crashes, please contact the official software Discord or Telegram. They provide direct technical support.",
+    "keywords": [
+      "crash",
+      "not launching",
+      "software crash"
+    ]
+  },
+  {
+    "question": "I am getting an error code.",
+    "answer": "Please contact the official software support Discord or Telegram and provide the exact error message for faster assistance.",
+    "keywords": [
+      "error code",
+      "launch error",
+      "problem opening"
+    ]
+  },
+  {
+    "question": "My antivirus is blocking the loader.",
+    "answer": "Some antivirus programs may flag modding software incorrectly. Please contact official software support for guidance on proper configuration.",
+    "keywords": [
+      "antivirus",
+      "blocked",
+      "defender",
+      "security warning"
+    ]
+  },
+  {
+    "question": "How long is my license valid?",
+    "answer": "License duration depends on the product purchased (monthly, lifetime, etc.). Please check your purchase details or ask support for verification.",
+    "keywords": [
+      "license duration",
+      "validity",
+      "expire"
+    ]
+  },
+  {
+    "question": "Can I transfer my license to another account?",
+    "answer": "Licenses are usually linked to the first account that activates them and cannot be transferred. Contact support if you believe there is an exception.",
+    "keywords": [
+      "transfer license",
+      "change account",
+      "move key"
+    ]
+  },
+  {
+    "question": "Where do I download the software?",
+    "answer": "Download links are provided after purchase. Always download from the official source provided in your purchase confirmation.",
+    "keywords": [
+      "download",
+      "where to download",
+      "loader link"
+    ]
+  },
+  {
+    "question": "I lost my key.",
+    "answer": "If you lost your key, please provide proof of purchase. A support agent will verify your transaction and assist you.",
+    "keywords": [
+      "lost key",
+      "missing license",
+      "recover key"
+    ]
+  },
+  {
+    "question": "Can I use the mod on multiple accounts?",
+    "answer": "License usage depends on the product purchased. Most licenses are tied to a single account.",
+    "keywords": [
+      "multiple accounts",
+      "use on two accounts",
+      "shared license"
+    ]
+  },
+  {
+    "question": "Can I use the software on multiple PCs?",
+    "answer": "Most licenses are tied to your account rather than your device. However, please check your product details for specific restrictions.",
+    "keywords": [
+      "multiple pc",
+      "two computers",
+      "device limit"
+    ]
+  },
+  {
+    "question": "Why is my order taking so long?",
+    "answer": "Most orders are processed automatically. If there is a delay, it may require manual verification. Please allow some time for review.",
+    "keywords": [
+      "order delay",
+      "taking long",
+      "waiting order"
+    ]
+  },
+  {
+    "question": "The website is not loading.",
+    "answer": "Please try clearing your browser cache or using another browser. If the issue persists, inform support.",
+    "keywords": [
+      "website down",
+      "not loading",
+      "site error"
+    ]
+  },
+  {
+    "question": "I sent the gift card code but no response.",
+    "answer": "Gift card payments require manual verification. Please wait for staff review and avoid resending the code publicly.",
+    "keywords": [
+      "no response",
+      "waiting verification",
+      "sent code"
+    ]
+  },
+  {
+    "question": "Can I upgrade my license?",
+    "answer": "Upgrade options depend on the product. Please contact support with your current license details.",
+    "keywords": [
+      "upgrade",
+      "change plan",
+      "upgrade license"
+    ]
+  },
+  {
+    "question": "Do you offer lifetime licenses?",
+    "answer": "License types depend on the product available at the time of purchase. Please check the product description.",
+    "keywords": [
+      "lifetime",
+      "permanent license",
+      "forever access"
+    ]
+  },
+  {
+    "question": "I have a technical problem not listed here.",
+    "answer": "For technical issues, please contact the official software Discord or Telegram for specialized assistance.",
+    "keywords": [
+      "technical issue",
+      "bug",
+      "problem not listed"
+    ]
+  },
+  {
+    "question": "I have another question.",
+    "answer": "If your question is not related to activation, payment, or access, a human support agent will assist you shortly.",
+    "keywords": [
+      "other issue",
+      "different problem",
+      "need help"
+    ]
+  },
+  {
+    "question": "How do I contact human support?",
+    "answer": "If the bot cannot fully resolve your issue, please wait in this ticket. A human support agent will assist you as soon as possible.",
+    "keywords": [
+      "human support",
+      "real person",
+      "talk to admin"
+    ]
+  }
+]
