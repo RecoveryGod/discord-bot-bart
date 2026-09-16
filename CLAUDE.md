@@ -118,6 +118,17 @@ customer must have asked via `/ask` or the button first.
 
 When staff sends any message in a thread, bot auto-pauses for 5 minutes (`staffActivity.js`).
 
+### Ticket auto-closing belongs to Tickety Premium
+
+Bart's own warn-then-archive loop is gated behind `AUTO_CLOSE_ENABLED` and **off by
+default**. Never run both: they send competing warnings to the same customer, and Bart
+archiving a thread does not close the ticket in Tickety's own system — a bot cannot
+invoke another application's slash command or press its button, so Bart can never call
+`/ticket close`.
+
+Still active regardless: the one-minute "please describe your issue" prompt, which uses
+a separate tracker (`trackedThreads`, not `idleThreads`).
+
 ### Key design decisions
 
 - **All state is in-memory** — paused threads, deduplication cache, inactivity tracking are lost on restart.

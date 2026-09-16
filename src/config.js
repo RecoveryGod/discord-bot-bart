@@ -33,6 +33,10 @@ export const TICKET_BOT_ID = process.env.TICKET_BOT_ID?.trim() ?? "";
 export const CLIENT_ID = process.env.CLIENT_ID?.trim() ?? "";
 export const GUILD_ID = process.env.GUILD_ID?.trim() ?? "";
 export const ANALYTICS_CHANNEL_ID = process.env.ANALYTICS_CHANNEL_ID?.trim() || null;
+// Tickety Premium owns ticket auto-closing. Bart's own warn/close loop is off by
+// default so the two never send competing warnings to the same customer. Set to
+// "true" only if Tickety stops handling it.
+export const AUTO_CLOSE_ENABLED = process.env.AUTO_CLOSE_ENABLED === "true";
 export const AUTO_CLOSE_HOURS = process.env.AUTO_CLOSE_HOURS ? parseFloat(process.env.AUTO_CLOSE_HOURS) : 48;
 export const TRAINING_CHANNEL_ID = process.env.TRAINING_CHANNEL_ID?.trim() ?? "";
 export const DOCS_EMBED_ON_BOOT = process.env.DOCS_EMBED_ON_BOOT === "true";

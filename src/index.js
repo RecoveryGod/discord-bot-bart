@@ -13,7 +13,7 @@ import {
   MessageFlags,
   SnowflakeUtil,
 } from "discord.js";
-import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS, TRAINING_CHANNEL_ID, DOCS_EMBED_ON_BOOT, BOT_VERSION } from "./config.js";
+import { loadConfig, BOT_TOKEN, PAYMENT_CHANNEL_ID, AMAZON_ROLE_ID, TICKET_CHANNEL_ID, OPENAI_API_KEY, STAFF_ROLE_ID, TICKET_BOT_ID, CLIENT_ID, GUILD_ID, ANALYTICS_CHANNEL_ID, AUTO_CLOSE_HOURS, AUTO_CLOSE_ENABLED, TRAINING_CHANNEL_ID, DOCS_EMBED_ON_BOOT, BOT_VERSION } from "./config.js";
 import { sendPaymentNotification } from "./services/notification.js";
 import { redactGiftCardCodes } from "./utils/redact.js";
 import { checkRateLimit } from "./services/rateLimiter.js";
@@ -286,7 +286,11 @@ client.on("ready", async () => {
   logger.info(`Bot v${BOT_VERSION} prêt, guilds:`, client.guilds.cache.size);
 
   // Pick up tickets opened before this process started (in-memory tracking, see above).
-  await seedIdleTrackingFromDiscord();
+  if (AUTO_CLOSE_ENABLED) {
+    await seedIdleTrackingFromDiscord();
+  } else {
+    logger.info("[Idle] Fermeture automatique déléguée à Tickety Premium — boucle de Bart désactivée");
+  }
 
   // Load the catalogue from disk, refresh it now, then keep it fresh in the background.
   startCatalogueRefresh();
@@ -452,8 +456,12 @@ client.on("ready", async () => {
       }
     }
 
-    // Auto-close idle tickets. Capped per cycle: seeding a backlog of ~80 stale tickets
-    // would otherwise fire that many messages in one tick and hit Discord's rate limits.
+    // Auto-close is Tickety Premium's job. Running both would warn the same customer
+    // twice with different wording, and archive threads Tickety still wants to close.
+    if (!AUTO_CLOSE_ENABLED) return;
+
+    // Capped per cycle: a seeded backlog would otherwise fire that many messages in one
+    // tick and hit Discord's rate limits.
     for (const threadId of getThreadsToWarn(AUTO_CLOSE_HOURS).slice(0, AUTO_CLOSE_BATCH)) {
       try {
         const thread = await client.channels.fetch(threadId);
