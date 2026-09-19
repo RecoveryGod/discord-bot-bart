@@ -137,6 +137,21 @@ function dropIfGone(threadId, err, context) {
   return true;
 }
 
+/**
+ * Neutralises a customer's question before echoing it back into the thread.
+ * The text is attacker-controlled, so mentions must not survive: @everyone gets a
+ * zero-width space, user/role tokens are flattened. Truncated so a long question
+ * cannot bury the answer.
+ */
+function sanitizeEcho(text) {
+  return String(text ?? "")
+    .replace(/@(everyone|here)/gi, "@\u200b$1")
+    .replace(/<@[!&]?\d+>/g, "[mention]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
 /** True when the channel is a thread under the configured ticket channel. */
 function isTicketThread(channel) {
   return Boolean(channel?.isThread?.() && channel.parentId === TICKET_CHANNEL_ID);
@@ -192,7 +207,7 @@ function buildWelcomeMessage() {
  * Guards run before deferring so refusals stay ephemeral; the answer itself is public
  * in the thread so staff can see what the bot told the customer.
  */
-async function runAISupport(interaction, question) {
+async function runAISupport(interaction, question, { echoQuestion = false } = {}) {
   const threadId = interaction.channelId;
 
   if (!isTicketThread(interaction.channel)) {
@@ -222,7 +237,13 @@ async function runAISupport(interaction, question) {
     const usable = aiResult && confidence >= 0.6;
     const reply = usable ? answer : ESCALATION_MESSAGE;
 
-    const sent = await interaction.editReply(reply);
+    // A modal's input is never shown publicly, so without this the thread is a wall of
+    // bot messages with no visible question — unreadable for staff, and it looks like
+    // the bot talking to itself. /ask needs no echo: Discord shows the invocation.
+    const echo = echoQuestion
+      ? `> **<@${interaction.user.id}> asked:** ${sanitizeEcho(safeQuestion)}\n\n`
+      : "";
+    const sent = await interaction.editReply(echo + reply);
     recordBotAnswer(threadId, reply, sent?.id ?? null);
 
     if (usable) {
@@ -539,7 +560,7 @@ client.on("interactionCreate", async (interaction) => {
 
     // --- Modal submitted → same AI path as /ask ---
     if (interaction.isModalSubmit() && interaction.customId === "ask_modal") {
-      await runAISupport(interaction, interaction.fields.getTextInputValue("ask_input"));
+      await runAISupport(interaction, interaction.fields.getTextInputValue("ask_input"), { echoQuestion: true });
       return;
     }
 
